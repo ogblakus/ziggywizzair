@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "ZiggyWizzAir",
+      "hasCanvas": false,
+      "bodyTextLen": 29,
+      "bodyTextHash": "2a8c329aaceb318f360de8dfdf4db0143a6851a35023fc19fd0a88b02798263c",
+      "bodyTextPrefix": "ZiggyWizzAir Opening the desk",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "ZiggyWizzAir",
+      "hasCanvas": false,
+      "bodyTextLen": 29,
+      "bodyTextHash": "2a8c329aaceb318f360de8dfdf4db0143a6851a35023fc19fd0a88b02798263c",
+      "bodyTextPrefix": "ZiggyWizzAir Opening the desk",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-preview.json"
+}
