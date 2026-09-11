@@ -28,7 +28,7 @@ export const AGENTS: AgentPersona[] = [
     id: "kai",
     name: "Kai",
     role: "Setup",
-    mandate: "12×1m: pullback 18–62% or tagging FVG, rvol ≥ 0.55, then a limit.",
+    mandate: "15m/1h/4h: highest-TF FVG the price tags, or a 15m pullback. 1m is noise.",
     mark: "K",
   },
   {

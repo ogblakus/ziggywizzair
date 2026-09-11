@@ -351,3 +351,19 @@ html.light {
     animation: none !important;
   }
 }
+
+.ticker-mark {
+  background: color-mix(in oklab, var(--color-elevated) 70%, var(--color-fg) 8%);
+  color: var(--color-accent);
+  box-shadow: var(--shadow-border);
+}
+
+.unit-wheel {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
+}
+.unit-wheel::-webkit-scrollbar {
+  display: none;
+}

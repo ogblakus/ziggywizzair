@@ -1,16 +1,38 @@
 import { useEffect, useState } from "react";
+import { Lock, LockOpen } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { compactMoney, compactPrice, money, pct, signedClass, signedQty } from "@/lib/format";
+import { hlFeeUsd } from "@/lib/desk/fees";
 import { bookEquity, useDesk, useMarkedAssets } from "@/lib/desk-store";
 import { useMark } from "@/lib/marks-store";
 import { isLot } from "@/lib/market/universe";
 import type { Position } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { assetLabel } from "@/lib/i18n/labels";
 import { useT, txError, t as tt } from "@/lib/i18n";
 import { useTradingMode } from "@/lib/trading-mode";
 import { useLiveWallet } from "@/lib/wallet/live-store";
+
+const CLOSE_SCALE_KEY = "zw-close-scale";
+
+function readCloseScale(): "pct" | "usd" {
+  try {
+    return window.localStorage.getItem(CLOSE_SCALE_KEY) === "usd" ? "usd" : "pct";
+  } catch {
+    return "pct";
+  }
+}
+
+function writeCloseScale(scale: "pct" | "usd") {
+  try {
+    window.localStorage.setItem(CLOSE_SCALE_KEY, scale);
+  } catch {
+    /* private mode */
+  }
+}
 
 function runClose(symbol: string, qty: number, closePosition: (s: string, q?: number) => { ok: boolean; error?: string }) {
   const res = closePosition(symbol, qty);
@@ -21,7 +43,32 @@ function runClose(symbol: string, qty: number, closePosition: (s: string, q?: nu
   toast.success(tt("ticket.closed", { symbol }));
 }
 
-function CloseTradeDialog({
+function TeamLockButton({ position: p }: { position: Position }) {
+  const t = useT();
+  const toggle = useDesk((s) => s.toggleTeamLock);
+  const locked = Boolean(p.teamLock);
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={() => toggle(p.symbol)}
+          className={cn(
+            "flex size-9 shrink-0 items-center justify-center rounded-md hover:bg-elevated",
+            locked ? "text-fg" : "text-muted",
+          )}
+          aria-pressed={locked}
+          aria-label={t("lock.toggle", { symbol: p.symbol })}
+        >
+          {locked ? <Lock className="size-3.5" /> : <LockOpen className="size-3.5" />}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>{locked ? t("lock.on") : t("lock.off")}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+export function CloseTradeDialog({
   position: p,
   open,
   onOpenChange,
@@ -34,14 +81,11 @@ function CloseTradeDialog({
   const closePosition = useDesk((s) => s.closePosition);
   const fallback = useDesk((s) => (p ? (s.assets[p.symbol]?.price ?? p.avg) : 0));
   const mark = useMark(p?.symbol ?? "");
-  const [scale, setScale] = useState<"pct" | "usd">("pct");
+  const [scale, setScale] = useState<"pct" | "usd">(readCloseScale);
   const [frac, setFrac] = useState(100);
 
   useEffect(() => {
-    if (open) {
-      setFrac(100);
-      setScale("pct");
-    }
+    if (open) setFrac(100);
   }, [open, p?.symbol]);
 
   if (!p) return null;
@@ -52,6 +96,7 @@ function CloseTradeDialog({
   const notional = full * px;
   const closeQty = Number(((full * frac) / 100).toFixed(crypto ? 4 : 2));
   const closeNotional = closeQty * px;
+  const closeFee = hlFeeUsd(closeQty, px, "taker");
 
   function confirm() {
     if (!(closeQty > 0)) return;
@@ -71,7 +116,10 @@ function CloseTradeDialog({
             <button
               key={s}
               type="button"
-              onClick={() => setScale(s)}
+              onClick={() => {
+                setScale(s);
+                writeCloseScale(s);
+              }}
               className={cn(
                 "h-9 flex-1 rounded-md text-sm font-medium",
                 scale === s ? "bg-elevated text-fg" : "bg-surface text-muted",
@@ -98,8 +146,11 @@ function CloseTradeDialog({
         <p className="font-mono text-2xs text-muted tabular-nums">
           {t("opened.title")} {signedQty(pos.qty, crypto)} · {compactPrice(px)} · {money(notional)}
         </p>
+        <p className="mt-1 font-mono text-2xs text-muted tabular-nums">
+          {t("close.fee", { usd: money(closeFee) })}
+        </p>
         <Button className="mt-4 h-11 w-full" variant="sell" onClick={confirm}>
-          {t("close.confirm")} {pos.symbol}
+          {t("close.confirm")} {assetLabel(pos.symbol)}
         </Button>
       </DialogContent>
     </Dialog>
@@ -206,7 +257,7 @@ export function OpenedTrades() {
                       >
                         {long ? t("side.long") : t("side.short")}
                       </span>
-                      <span className="font-mono text-sm font-medium">{p.symbol}</span>
+                      <span className="font-mono text-sm font-medium">{assetLabel(p.symbol)}</span>
                     </div>
                     <div className="mt-1 font-mono text-2xs text-muted tabular-nums">
                       {signedQty(p.qty, crypto)} @ {compactPrice(p.avg)} → {compactPrice(px)} ·{" "}
@@ -216,6 +267,7 @@ export function OpenedTrades() {
                       {money(pnl)} · {pct(pnlPct)}
                     </div>
                   </button>
+                  <TeamLockButton position={p} />
                   <Button
                     type="button"
                     variant="outline"
@@ -321,7 +373,7 @@ function OpenedChip({
     <div className="flex h-9 shrink-0 items-center gap-2 rounded-md bg-surface px-2 shadow-[var(--shadow-border)] sm:h-11 sm:rounded-lg sm:px-2.5">
       <button type="button" onClick={() => onSelect(p.symbol)} className="flex items-center gap-2 text-left">
         <span className={cn("font-mono text-sm font-medium", long ? "text-up" : "text-down")}>
-          {p.symbol}
+          {assetLabel(p.symbol)}
         </span>
         <span className="text-2xs font-medium tracking-wide text-muted">
           {long ? t("side.long") : t("side.short")}
@@ -329,6 +381,7 @@ function OpenedChip({
         <span className="font-mono text-2xs text-muted tabular-nums">{compactMoney(Math.abs(p.qty * px))}</span>
         <span className={`font-mono text-2xs tabular-nums ${signedClass(pnl)}`}>{money(pnl)}</span>
       </button>
+      <TeamLockButton position={p} />
       <button
         type="button"
         onClick={() => setOpen(true)}

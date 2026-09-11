@@ -27,6 +27,14 @@ export function compactPrice(n: number) {
   return n.toFixed(4);
 }
 
+/** Same-width chip print: drop cents above 1k so GOLD and BTC don't wrap. */
+export function chipPrice(n: number) {
+  if (!(n > 0)) return "—";
+  if (n >= 1_000) return n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  if (n >= 1) return n.toFixed(2);
+  return n.toFixed(4);
+}
+
 export function pct(n: number, digits = 2) {
   const sign = n > 0 ? "+" : "";
   return `${sign}${n.toFixed(digits)}%`;

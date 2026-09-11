@@ -5,6 +5,7 @@ import { useDesk, useMarkedAssets } from "@/lib/desk-store";
 import { isLot } from "@/lib/market/universe";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
+import { assetName, fillNoteLabel, fillSideLabel } from "@/lib/i18n/labels";
 import { useTradingMode } from "@/lib/trading-mode";
 import { useLiveWallet } from "@/lib/wallet/live-store";
 
@@ -137,7 +138,7 @@ export function PortfolioPanel() {
                   <div className="font-mono text-2xs tabular-nums tracking-tight">
                     {money(equityShown, 0)}
                   </div>
-                  <div className="text-2xs text-subtle">{t("port.equity")}</div>
+                  <div className="text-2xs text-subtle">{live ? t("port.equityHl") : t("port.equity")}</div>
                 </div>
               </>
             ) : (
@@ -156,7 +157,7 @@ export function PortfolioPanel() {
                   />
                   <span className="min-w-0">
                     <span className="block truncate text-xs font-medium">
-                      {s.kind === "cash" ? t("port.cash") : s.name}
+                      {s.kind === "cash" ? (live ? t("port.cashHl") : t("port.cash")) : assetName(s.name)}
                       {s.kind === "short" ? <span className="text-down"> {t("port.short")}</span> : null}
                       {s.kind === "long" ? <span className="text-up"> {t("port.long")}</span> : null}
                     </span>
@@ -272,11 +273,11 @@ export function PortfolioPanel() {
                   className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 font-mono text-2xs tabular-nums"
                 >
                   <span className={cn(f.side === "buy" ? "text-up" : "text-down")}>
-                    {f.side.toUpperCase()} {qtyFmt(f.qty, isLot(f.symbol))} {f.symbol}
+                    {fillSideLabel(f.side)} {qtyFmt(f.qty, isLot(f.symbol))} {assetName(f.symbol)}
                   </span>
                   <span className="text-muted">
                     {compactPrice(f.price)}
-                    {f.note === "Close" ? ` · ${t("port.closeNote")}` : ""}
+                    {` · ${fillNoteLabel(f.note, f.source)}`}
                   </span>
                 </li>
               ))

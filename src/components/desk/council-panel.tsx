@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ArrowUpRight, Minus, ArrowDownRight } from "lucide-react";
 import { toast } from "sonner";
 import { TapePanel } from "@/components/desk/tape-panel";
-import { AutopilotSwitch } from "@/components/desk/autopilot-switch";
+import { FloorControls } from "@/components/desk/autopilot-switch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,13 +14,14 @@ import { sentimentBias } from "@/lib/market/macro";
 import { isLot } from "@/lib/market/universe";
 import { useDesk } from "@/lib/desk-store";
 import { cn } from "@/lib/utils";
+import { assetLabel } from "@/lib/i18n/labels";
 import { useT, txError, type MsgKey } from "@/lib/i18n";
 import { useTradingMode } from "@/lib/trading-mode";
 import { liveProposal } from "@/lib/desk/proposal";
 
 type FloorPane = "agents" | "tape";
 
-export function CouncilPanel() {
+export function CouncilPanel({ onConvene }: { onConvene?: () => void }) {
   const [pane, setPane] = useState<FloorPane>("agents");
   const t = useT();
 
@@ -40,14 +41,14 @@ export function CouncilPanel() {
           </TabsTrigger>
         </TabsList>
         <div className="min-h-0 flex-1 overflow-hidden">
-          {pane === "agents" ? <AgentsPane /> : <TapePanel />}
+          {pane === "agents" ? <AgentsPane onConvene={onConvene} /> : <TapePanel />}
         </div>
       </Tabs>
     </div>
   );
 }
 
-function AgentsPane() {
+function AgentsPane({ onConvene }: { onConvene?: () => void }) {
   const agents = useDesk((s) => s.agents);
   const lastCouncil = useDesk((s) => s.lastCouncil);
   const agentCalls = useDesk((s) => s.agentCalls);
@@ -86,7 +87,7 @@ function AgentsPane() {
             <span className="text-2xs text-subtle">{t("floor.idle")}</span>
           )}
         </div>
-        <AutopilotSwitch className="lg:hidden" />
+        {onConvene ? <FloorControls onConvene={onConvene} className="lg:hidden" /> : null}
       </div>
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-1">
@@ -177,7 +178,7 @@ function AgentsPane() {
             <div className="text-2xs font-medium tracking-wide text-subtle uppercase">{t("floor.proposed")}</div>
             <div className="mt-1 font-mono text-sm tabular-nums">
               {proposal.side.toUpperCase()} {qtyFmt(proposal.qty, isLot(proposal.symbol))}{" "}
-              {proposal.symbol}
+              {assetLabel(proposal.symbol)}
               {proposal.limitPx ? ` · ${t("floor.limitAt", { px: compactPrice(proposal.limitPx) })}` : ""}
             </div>
             <p className="mt-1 text-xs leading-relaxed text-muted">{proposal.rationale}</p>
@@ -198,7 +199,7 @@ function AgentsPane() {
           <div className="rounded-xl bg-surface p-3 shadow-[var(--shadow-border)]">
             <div className="text-2xs font-medium tracking-wide text-subtle uppercase">{t("floor.working")}</div>
             <div className="mt-1 font-mono text-sm tabular-nums">
-              {working.side.toUpperCase()} {qtyFmt(working.qty, isLot(working.symbol))} {working.symbol}
+              {working.side.toUpperCase()} {qtyFmt(working.qty, isLot(working.symbol))} {assetLabel(working.symbol)}
               {working.limitPx ? ` · ${t("floor.limitAt", { px: compactPrice(working.limitPx) })}` : ""}
             </div>
             <p className="mt-1 text-xs leading-relaxed text-muted">{working.rationale}</p>
@@ -236,8 +237,8 @@ export function ChatPane({ onAsk }: { onAsk: (q: string) => Promise<void> }) {
   }, [thread.length, waiting, lastAsk?.text]);
 
   const chips = [
-    t("floor.chipTell", { symbol: selected }),
-    positions[0] ? t("floor.chipClose", { symbol: positions[0].symbol }) : t("floor.chipProbe", { symbol: selected }),
+    t("floor.chipTell", { symbol: assetLabel(selected) }),
+    positions[0] ? t("floor.chipClose", { symbol: assetLabel(positions[0].symbol) }) : t("floor.chipProbe", { symbol: assetLabel(selected) }),
     t("floor.chipWire"),
   ];
 
@@ -463,7 +464,7 @@ function VoteChip({ vote, symbol }: { vote: Vote; symbol: string | null }) {
     >
       <Icon className="size-3" />
       {vote === "buy" ? t("ticket.buyCap") : t("ticket.sellCap")}
-      {symbol ? ` ${symbol}` : ""}
+      {symbol ? ` ${assetLabel(symbol)}` : ""}
     </span>
   );
 }

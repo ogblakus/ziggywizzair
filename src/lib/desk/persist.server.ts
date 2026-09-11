@@ -13,6 +13,7 @@ import {
   scrubGhostAutopilot,
   type DeskBook,
 } from "@/lib/desk/engine";
+import { withTeamLocks } from "@/lib/desk/holds";
 
 const FILE_DIR = BOOKS_DIR;
 
@@ -54,6 +55,7 @@ function asBook(raw: unknown): DeskBook | null {
     locale: p.locale === "pl" ? "pl" : "en",
     mode: p.mode === "live" ? "live" : "demo",
   };
+  book.positions = withTeamLocks(book.positions, book.fills);
   return scrubGhostAutopilot(book);
 }
 
@@ -252,7 +254,7 @@ async function tickOne(userId: string, book: DeskBook, tape: LiveQuote[], now: n
     const fresh = saved.fills.filter((f) => !beforeIds.has(f.id));
     if (fresh.length) {
       void import("./push.server")
-        .then((m) => m.notifyFills(fresh, saved.closedTrades, userId))
+        .then((m) => m.notifyFills(fresh, saved.closedTrades, userId, saved.locale === "pl" ? "pl" : "en"))
         .catch(() => undefined);
     } else if (saved.proposal && !hadProposal && !saved.autopilot) {
       void import("./push.server")
@@ -321,8 +323,12 @@ export async function saveFromClient(
     }
     const existing = await loadBook(userId);
     if (!preferBook(incoming, existing) && bookLooksLive(existing)) {
-      peeks()[userId] = existing;
-      return { book: existing, accepted: false };
+      const merged =
+        incoming.selected && incoming.selected !== existing.selected
+          ? { ...existing, selected: incoming.selected }
+          : existing;
+      peeks()[userId] = merged;
+      return { book: merged, accepted: false };
     }
     const saved = await persistInner(userId, incoming, { touchClient: true });
     return { book: saved, accepted: true };

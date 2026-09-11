@@ -58,6 +58,46 @@ function applyAccount(
   };
 }
 
+function attachWalletKeepalive() {
+  if (typeof window === "undefined") return;
+  const w = window as Window & { __zwWalletKeep?: boolean };
+  if (w.__zwWalletKeep) return;
+  w.__zwWalletKeep = true;
+
+  const onAccounts = (...args: unknown[]) => {
+    const list = Array.isArray(args[0]) ? (args[0] as string[]) : [];
+    const next = list[0];
+    if (!next) return;
+    const cur = useLiveWallet.getState();
+    if (cur.address && next.toLowerCase() === cur.address.toLowerCase()) return;
+    void cur.watchAddress(next).then(() => {
+      useLiveWallet.setState({ source: "metamask" });
+    });
+  };
+
+  const bindEth = () => {
+    const eth = getEthereum();
+    if (!eth?.on) return;
+    eth.on("accountsChanged", onAccounts);
+  };
+  bindEth();
+
+  const wake = () => {
+    const s = useLiveWallet.getState();
+    if (s.address) void s.refresh();
+    const eth = getEthereum();
+    if (!eth) return;
+    void eth.request({ method: "eth_accounts" }).then((raw) => {
+      const list = Array.isArray(raw) ? (raw as string[]) : [];
+      if (list[0]) onAccounts(list);
+    }).catch(() => undefined);
+  };
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") wake();
+  });
+  window.addEventListener("focus", wake);
+}
+
 export const useLiveWallet = create<LiveState>()(
   persist(
     (set, get) => ({
@@ -82,7 +122,7 @@ export const useLiveWallet = create<LiveState>()(
           set(applyAccount(account, { source: "metamask" }));
         } catch (err) {
           set({
-            status: "error",
+            status: get().address ? "live" : "error",
             error: err instanceof Error ? err.message : "Could not connect MetaMask",
           });
         }
@@ -96,7 +136,7 @@ export const useLiveWallet = create<LiveState>()(
         set({ status: "connecting", error: null });
         try {
           const account = await pull(address);
-          set(applyAccount(account, { source: "watch" }));
+          set(applyAccount(account, { source: get().source ?? "watch" }));
         } catch (err) {
           set({
             status: "error",
@@ -112,7 +152,7 @@ export const useLiveWallet = create<LiveState>()(
           set(applyAccount(account));
         } catch (err) {
           set({
-            status: "error",
+            status: get().address ? "live" : "error",
             error: err instanceof Error ? err.message : "Hyperliquid quiet",
           });
         }
@@ -158,23 +198,11 @@ export const useLiveWallet = create<LiveState>()(
       name: "zw-live-wallet",
       partialize: (s) => ({ address: s.address, source: s.source }),
       onRehydrateStorage: () => (state) => {
+        attachWalletKeepalive();
         if (!state?.address) return;
         void state.refresh();
-        const eth = getEthereum();
-        if (!eth?.on) return;
-        const onAccounts = (...args: unknown[]) => {
-          const list = Array.isArray(args[0]) ? (args[0] as string[]) : [];
-          const next = list[0];
-          if (!next) {
-            useLiveWallet.getState().disconnect();
-            return;
-          }
-          void useLiveWallet.getState().watchAddress(next).then(() => {
-            useLiveWallet.setState({ source: "metamask" });
-          });
-        };
-        eth.on("accountsChanged", onAccounts);
       },
     },
   ),
 );
+

@@ -77,9 +77,12 @@ export function closedFromFill(existing: Position | undefined, fill: Fill): Clos
   const signed = fill.side === "buy" ? fill.qty : -fill.qty;
   if (Math.sign(existing.qty) === Math.sign(signed)) return null;
   const closedQty = Math.min(Math.abs(existing.qty), fill.qty);
-  const pnl = (fill.price - existing.avg) * closedQty * Math.sign(existing.qty);
+  const realized = (fill.price - existing.avg) * closedQty * Math.sign(existing.qty);
+  const share = closedQty / Math.abs(existing.qty);
+  const fees = (existing.fees ?? 0) * share + (fill.fee ?? 0);
+  const pnl = realized - fees;
   const side = existing.qty > 0 ? "long" : "short";
-  const pnlPct = existing.avg ? ((fill.price - existing.avg) / existing.avg) * 100 * Math.sign(existing.qty) : 0;
+  const pnlPct = existing.avg ? (pnl / (existing.avg * closedQty)) * 100 : 0;
   return {
     id: fill.id,
     ts: fill.ts,
@@ -94,6 +97,7 @@ export function closedFromFill(existing: Position | undefined, fill: Fill): Clos
     source: fill.source,
     entryNote: existing.entryNote,
     closeNote: fill.note,
+    fees,
   };
 }
 
@@ -102,37 +106,67 @@ export function humanCloseNote(row: ClosedTrade, locale: Locale = "pl"): string 
   const note = (row.closeNote ?? "").trim();
   const src = row.source;
 
-  if (note === "close.hyperliquid" || /hyperliquid/i.test(note)) {
+  if (
+    note === "close.hyperliquid" ||
+    /hyperliquid/i.test(note) ||
+    /Closed on Hyperliquid/i.test(note) ||
+    /Zamknięcie na Hyperliquid/i.test(note)
+  ) {
     return pl
       ? "Zamknięcie na Hyperliquid — nie z pulpitu demo."
       : "Closed on Hyperliquid — not from the demo desk.";
   }
-  if (src === "manual" || /^close$/i.test(note) || /^ręcznie$/i.test(note) || note === "close.manual") {
+  if (
+    src === "manual" ||
+    /^close$/i.test(note) ||
+    /^ręcznie$/i.test(note) ||
+    note === "close.manual" ||
+    /^You closed this by hand/i.test(note) ||
+    /^Zamknąłeś pozycję ręcznie/i.test(note)
+  ) {
     return pl ? "Zamknąłeś pozycję ręcznie — to nie była decyzja rady." : "You closed this by hand — not the floor.";
   }
-  if (/partial close|ręcznie \(część\)|close.manualPartial/i.test(note)) {
+  if (
+    /partial close|ręcznie \(część\)|close.manualPartial/i.test(note) ||
+    /You closed part of the trade by hand/i.test(note)
+  ) {
     return pl
       ? "Zamknąłeś część pozycji ręcznie. Reszta zostaje."
       : "You closed part of the trade by hand. The rest stays on.";
   }
-  if (note === "close.timeSession" || /time stop — session/i.test(note)) {
+  if (
+    note === "close.timeSession" ||
+    note === "Time stop" ||
+    /time stop — session/i.test(note) ||
+    /A default trade is one session/i.test(note) ||
+    /Zwykły trade trzymamy jak jedną sesję/i.test(note)
+  ) {
     return pl
       ? "Czas minął. Zwykły trade trzymamy jak jedną sesję (kilka godzin), a tu nie było powodu zostawać dłużej."
       : "Time was up. A default trade is one session (a few hours), and there was no reason to stay longer.";
   }
-  if (note === "close.timePromising" || /time stop — stretched/i.test(note)) {
+  if (
+    note === "close.timePromising" ||
+    /time stop — stretched/i.test(note) ||
+    /let it run a few days/i.test(note) ||
+    /trzymaliśmy dłużej \(do kilku dni\)/i.test(note)
+  ) {
     return pl
       ? "Czas minął. Szło z nami, więc trzymaliśmy dłużej (do kilku dni), ale i ten limit się skończył."
       : "Time was up. It was working so we let it run a few days, then flattened.";
   }
-  if (note === "close.contrary" || /contrary signal/i.test(note)) {
+  if (
+    note === "close.contrary" ||
+    /contrary signal/i.test(note) ||
+    /przeciwny sygnał/i.test(note)
+  ) {
     return pl
       ? "Rada zdjęła pozycję, bo przyszedł przeciwny sygnał — to nie było nowe otwarcie."
       : "The floor flattened on a contrary signal — not a new entry.";
   }
-  if (/cut|zdejmuje|stall|stanę/i.test(note)) {
+  if (/cut|zdejmuje|stall|stanę/i.test(note) && !/Time was up/i.test(note)) {
     return pl
-      ? `Rada zdjęła pozycję, bo ruch się skończył.${note.length > 12 ? ` ${note}` : ""}`
+      ? `Rada zdjęła pozycję, bo ruch się skończył.${note.length > 12 && /[ąćęłńóśźż]/i.test(note) ? ` ${note}` : ""}`
       : note;
   }
   if (/daje \d|sizes \d|clip od pogody|% kapitału na |quorum |limit Kaia/i.test(note)) {
@@ -141,10 +175,56 @@ export function humanCloseNote(row: ClosedTrade, locale: Locale = "pl"): string 
       : "The floor closed this (contrary signal). The entry note does not explain the exit.";
   }
   if (src === "council" || src === "autopilot") {
-    if (note.length > 12) return note;
+    if (note.length > 12) return polishDeskProse(note, locale);
     return pl ? "Autopilot zamknął pozycję na sygnał rady." : "Autopilot closed on a floor signal.";
   }
-  return note || (pl ? "Brak uzasadnienia." : "No close note.");
+  return polishDeskProse(note, locale) || (pl ? "Brak uzasadnienia." : "No close note.");
+}
+
+export function polishDeskProse(raw: string, locale: Locale): string {
+  if (!raw) return raw;
+  if (locale !== "pl") {
+    return raw
+      .replace(/\bclip od pogody Damiana\b/gi, "size from Damian's weather")
+      .replace(/\bZwiad\s+/gi, "Direction: ")
+      .replace(/\bZłoto\b/g, "Gold")
+      .replace(/\bSrebro\b/g, "Silver")
+      .replace(/\bzłoto\b/g, "gold")
+      .replace(/\bsrebro\b/g, "silver")
+      .replace(/\bGotówka\b/g, "Cash")
+      .replace(/\bręcznie\b/gi, "by hand")
+      .replace(/\bNarada\b/g, "Convene");
+  }
+  return raw
+    .replace(/\bclip od pogody Damiana\b/gi, "wielkość od pogody Damiana")
+    .replace(/\bClip from Damian's weather was fine\b/gi, "Wielkość od pogody Damiana była w porządku")
+    .replace(/\bClip from Damian's weather\b/gi, "wielkość od pogody Damiana")
+    .replace(/\bI size 2–6% from Damian's weather\b/gi, "Wielkość 2–6% od pogody Damiana")
+    .replace(/\bWeather didn't fight this clip\b/gi, "Pogoda nie biła się z tą nogą")
+    .replace(/\bTape\b/g, "Notowania")
+    .replace(/\bZwiad\s+vesper\+kai\b/gi, "Kierunek: Vesper i Kai")
+    .replace(/\bZwiad\s+/gi, "Kierunek: ")
+    .replace(/Limit Kaia na końcu/gi, "Kai stawia limit na końcu")
+    .replace(/\btoo few closed calls to score\b/gi, "za mało zamkniętych, żeby ocenić")
+    .replace(/\bpaid the trend\b/gi, "zapłaciło za trend")
+    .replace(/\bNot my fade\b/gi, "Nie moje odbicie")
+    .replace(/\bI didn't set a limit on\b/gi, "Nie stawiałem limitu na")
+    .replace(/\bsitting out was correct\b/gi, "czekanie było w porządku")
+    .replace(/\bI keep this 2–6% band\b/gi, "Zostaję przy 2–6%")
+    .replace(/\bI keep riding names that still expand vs the 20-SMA\b/gi, "Dalej jadę z tymi, które rosną względem 20-sesyjnej średniej")
+    .replace(/\bClosed \+/g, "Zamknięte +")
+    .replace(/\bround-trip\b/gi, "otwarcie i zamknięcie")
+    .replace(/\bSilver\b/g, "Srebro")
+    .replace(/\bGold\b/g, "Złoto")
+    .replace(/\bSILVER\b/g, "srebro")
+    .replace(/\bGOLD\b/g, "złoto")
+    .replace(/\bclip\b/gi, "noga");
+}
+
+export function humanEntryNote(note: string | undefined, locale: Locale = "pl"): string {
+  const raw = (note ?? "").trim();
+  if (!raw) return locale === "pl" ? "Brak uzasadnienia." : "No entry note.";
+  return polishDeskProse(raw, locale);
 }
 
 export function decorateClosed(
@@ -152,15 +232,15 @@ export function decorateClosed(
   lastCouncil: CouncilResult | null | undefined,
   fill: Fill,
   priorFills: Fill[] = [],
+  locale: Locale = getLocale(),
 ): ClosedTrade {
   const agents = (lastCouncil?.agents ?? [])
     .filter((a) => a.thesis)
-    .map((a) => ({ id: a.id, vote: a.vote, thesis: a.thesis }));
+    .map((a) => ({ id: a.id, vote: a.vote, thesis: a.thesis, symbol: a.symbol }));
   const wantSide = closed.side === "short" ? "sell" : "buy";
   const openFill = priorFills
     .filter((f) => f.symbol === fill.symbol && f.side === wantSide && f.ts < fill.ts)
     .at(-1);
-  const locale = getLocale();
   const withAgents = {
     ...closed,
     source: closed.source ?? fill.source,
@@ -169,11 +249,12 @@ export function decorateClosed(
     agents: agents.length ? agents : closed.agents,
     entryNote: closed.entryNote ?? openFill?.note,
   };
+  const reflections = reflectClosed(withAgents, lastCouncil, locale);
   return {
     ...withAgents,
-    closeNote: humanCloseNote(withAgents, locale),
-    analysis: explainTrade(withAgents, locale),
-    agents: reflectClosed(withAgents, lastCouncil, locale),
+    closeNote: withAgents.closeNote,
+    analysis: explainTrade({ ...withAgents, agents: reflections }, locale),
+    agents: reflections,
   };
 }
 
@@ -190,17 +271,7 @@ export function explainTrade(row: ClosedTrade, locale: Locale = "pl"): string {
     const name = AGENT_BY_ID[a.id]?.name ?? a.id;
     return `• ${name}: ${a.thesis}`;
   });
-  const hours =
-    row.openedAt && row.ts > row.openedAt
-      ? ((row.ts - row.openedAt) / 3_600_000).toFixed(1)
-      : null;
-  const foot = [
-    hours ? (pl ? `trzymane ${hours} h` : `held ${hours}h`) : null,
-    row.pnlPct != null ? `${row.pnlPct >= 0 ? "+" : ""}${row.pnlPct.toFixed(2)}%` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  return [head, ...lines, foot].filter(Boolean).join("\n");
+  return [head, ...lines].join("\n");
 }
 
 export type AllocationKind = "cash" | "long" | "short";

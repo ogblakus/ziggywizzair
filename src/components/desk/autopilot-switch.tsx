@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useDesk } from "@/lib/desk-store";
 import { useTradingMode } from "@/lib/trading-mode";
 import { useT } from "@/lib/i18n";
@@ -105,5 +106,37 @@ export function AutopilotSwitch({
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/** Autopilot, then manual convene on its right. */
+export function FloorControls({
+  onConvene,
+  className,
+}: {
+  onConvene: () => void;
+  className?: string;
+}) {
+  const t = useT();
+  const convening = useDesk((s) => s.convening);
+  const mode = useTradingMode((s) => s.mode);
+  return (
+    <div className={cn("flex shrink-0 items-center gap-2", className)}>
+      {mode === "demo" ? <AutopilotSwitch /> : null}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="h-7 shrink-0 px-2.5 text-2xs"
+            onClick={onConvene}
+            disabled={convening}
+          >
+            {convening ? t("header.inSession") : t("header.convene")}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{t("header.conveneTip")}</TooltipContent>
+      </Tooltip>
+    </div>
   );
 }

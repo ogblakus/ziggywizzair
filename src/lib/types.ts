@@ -11,6 +11,21 @@ export type TickBar = {
   v?: number;
 };
 
+export type SetupTf = "15m" | "1h" | "4h";
+
+export type SessionName = "lon" | "ny" | "tyo" | "utc";
+export type SessionPrint = {
+  name: SessionName;
+  kind: "grab-down" | "grab-up";
+  pct: number;
+};
+
+export type HtfPack = {
+  m15: TickBar[];
+  h1: TickBar[];
+  h4: TickBar[];
+};
+
 export type MarketAsset = {
   symbol: string;
   name: string;
@@ -19,6 +34,10 @@ export type MarketAsset = {
   high: number;
   low: number;
   series: TickBar[];
+  /** Chart-only 5m bars (90 × 5m = 450 min). Agents ignore this. */
+  chart5?: TickBar[];
+  /** Higher-TF candles for agents. Charts keep `series` (1m). */
+  htf?: HtfPack;
   vol: number;
   beta: number;
   /** Desk mark: Hyperliquid mid when the tape is live, else Yahoo. */
@@ -35,6 +54,10 @@ export type Position = {
   avg: number;
   openedAt?: number;
   entryNote?: string;
+  /** When true, the team cannot close or add. Manual opens default to locked. */
+  teamLock?: boolean;
+  /** Cumulative Hyperliquid-style fees paid while this name is open. */
+  fees?: number;
 };
 
 export type AgentCall = {
@@ -75,6 +98,8 @@ export type Fill = {
   price: number;
   source: "manual" | "council" | "autopilot";
   note?: string;
+  fee?: number;
+  feeKind?: "taker" | "maker";
 };
 
 export type Headline = {
@@ -162,8 +187,12 @@ export type TickerSnapshot = {
   sellFvg?: { low: number; high: number } | null;
   buyWick?: boolean;
   sellWick?: boolean;
+  buyTf?: SetupTf | null;
+  sellTf?: SetupTf | null;
   /** Last bar volume vs prior average. Null when the tape has no size. */
   rvol?: number | null;
+  /** Sharp print around Lon/NY/Tyo open on 15m, if any. */
+  session?: SessionPrint | null;
 };
 
 export type MacroTape = {
@@ -189,6 +218,7 @@ export type MarketSnapshot = {
       qty: number;
       avg: number;
       pnlPct: number;
+      teamLock?: boolean;
     }>;
   };
   macro?: MacroTape | null;
@@ -234,6 +264,7 @@ export type ClosedTrade = {
   source?: Fill["source"];
   entryNote?: string;
   closeNote?: string;
+  fees?: number;
   analysis?: string;
   agents?: Array<{ id: AgentId; vote: Vote; thesis: string }>;
 };

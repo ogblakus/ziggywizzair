@@ -11,12 +11,14 @@ import {
   scrubGhostAutopilot,
   type DeskBook,
 } from "@/lib/desk/engine";
-import { addCountToday, holdExpired, isAddOn, isReduce, MAX_ADDS_PER_DAY, stampOpened, viewOf } from "@/lib/desk/holds";
+import { addCountToday, holdExpired, isAddOn, isReduce, MAX_ADDS_PER_DAY, promisingHold, stampOpened, teamBlocks, viewOf, withTeamLocks } from "@/lib/desk/holds";
+import { hlFeeUsd, type FeeKind } from "@/lib/desk/fees";
+import { tapeFillText } from "@/lib/i18n/labels";
 import { t } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n/locale";
 import { liveProposal, stampProposal } from "@/lib/desk/proposal";
-import { changePct, rsi, sma } from "@/lib/market/engine";
-import { relativeVolume, tickerSetupFields } from "@/lib/market/setup";
+import { changePct } from "@/lib/market/engine";
+import { analysisSnapshot } from "@/lib/market/setup";
 import { withEquityPct } from "@/lib/market/macro";
 import { isQuietNews, newsKeysFrom, newsKey, newsOverlap } from "@/lib/market/news-key";
 import type { LiveQuote } from "@/lib/market/quotes";
@@ -34,9 +36,30 @@ import type {
   MarketAsset,
   MarketSnapshot,
   Position,
+  TickBar,
 } from "@/lib/types";
 
 export type FeedStatusLocal = "live" | "stale" | "idle";
+
+function bumpLast(bars: TickBar[] | undefined, mid: number, now: number, stepMs: number, keep: number) {
+  if (!bars?.length) return bars;
+  const bucket = Math.floor(now / stepMs) * stepMs;
+  const last = bars.at(-1)!;
+  if (now - last.t < stepMs) {
+    return [
+      ...bars.slice(0, -1),
+      {
+        t: last.t,
+        px: mid,
+        v: last.v,
+        o: last.o ?? last.px,
+        h: last.h != null ? Math.max(last.h, mid) : Math.max(last.px, mid),
+        l: last.l != null ? Math.min(last.l, mid) : Math.min(last.px, mid),
+      },
+    ];
+  }
+  return [...bars.slice(-(keep - 1)), { t: bucket, px: mid, o: mid, h: mid, l: mid }];
+}
 
 type DeskState = DeskBook & {
   hydrated: boolean;
@@ -72,11 +95,13 @@ type DeskActions = {
     source: Fill["source"];
     note?: string;
     skipRisk?: boolean;
+    feeKind?: FeeKind;
   }) => { ok: true; fill: Fill } | { ok: false; error: string };
   closePosition: (
     symbol: string,
     qty?: number,
   ) => { ok: true; fill: Fill } | { ok: false; error: string };
+  toggleTeamLock: (symbol: string) => void;
   applyCouncil: (result: CouncilResult, source: "ai" | "local", opts?: { spoken?: boolean }) => void;
   answerAsk: (question: string, result: { speaker: AgentId; text: string }, source: "ai" | "local") => void;
   executeProposal: () => { ok: true } | { ok: false; error: string };
@@ -274,6 +299,13 @@ export const useDesk = create<DeskState & DeskActions>()(
             high: q.high,
             low: q.low,
             series: (q.series.length ? q.series : prev?.series ?? [{ t: now, px: q.livePx ?? q.price }]).slice(-120),
+            chart5: q.chart5 && q.chart5.length >= 2 ? q.chart5.slice(-90) : prev?.chart5,
+            htf:
+              q.htf && (q.htf.m15?.length ?? 0) >= (prev?.htf?.m15.length ?? 0)
+                ? q.htf
+                : q.htf && (q.htf.m15?.length ?? 0) >= 48
+                  ? q.htf
+                  : prev?.htf ?? q.htf,
             vol: u.vol,
             beta: u.beta,
             livePx: q.livePx ?? prev?.livePx ?? null,
@@ -308,32 +340,48 @@ export const useDesk = create<DeskState & DeskActions>()(
         const assets = { ...s.assets };
         let hit = false;
         const now = Date.now();
+        const selected = s.selected;
         for (const [sym, mid] of Object.entries(mids)) {
           const prev = assets[sym];
           if (!prev || !(mid > 0)) continue;
+          const lastPx = prev.livePx && prev.livePx > 0 ? prev.livePx : prev.price;
+          if (Math.abs(lastPx - mid) / mid < 1e-8) continue;
           hit = true;
           const last = prev.series.at(-1);
-          const bar =
-            last && now - last.t < 60_000
-              ? {
-                  t: last.t,
-                  px: mid,
-                  v: last.v,
-                  o: last.o ?? last.px,
-                  h: last.h != null ? Math.max(last.h, mid) : Math.max(last.px, mid),
-                  l: last.l != null ? Math.min(last.l, mid) : Math.min(last.px, mid),
-                }
-              : { t: now, px: mid, o: mid, h: mid, l: mid };
+          const bucket = Math.floor(now / 60_000) * 60_000;
+          const series =
+            sym === selected
+              ? last && bucket - last.t < 60_000
+                ? [
+                    ...prev.series.slice(0, -1),
+                    {
+                      t: last.t,
+                      px: mid,
+                      v: last.v,
+                      o: last.o ?? last.px,
+                      h: last.h != null ? Math.max(last.h, mid) : Math.max(last.px, mid),
+                      l: last.l != null ? Math.min(last.l, mid) : Math.min(last.px, mid),
+                    },
+                  ]
+                : [...prev.series.slice(-119), { t: bucket, px: mid, o: mid, h: mid, l: mid }]
+              : prev.series;
+          const chart5 = bumpLast(prev.chart5, mid, now, 5 * 60_000, 90);
+          const htf = prev.htf
+            ? {
+                m15: bumpLast(prev.htf.m15, mid, now, 15 * 60_000, 96) ?? prev.htf.m15,
+                h1: prev.htf.h1,
+                h4: prev.htf.h4,
+              }
+            : prev.htf;
           assets[sym] = {
             ...prev,
             price: mid,
             livePx: mid,
             high: prev.high ? Math.max(prev.high, mid) : mid,
             low: prev.low ? Math.min(prev.low, mid) : mid,
-            series:
-              last && now - last.t < 60_000
-                ? [...prev.series.slice(0, -1), bar]
-                : [...prev.series.slice(-119), bar],
+            series,
+            chart5,
+            htf,
           };
         }
         if (!hit) return;
@@ -377,7 +425,10 @@ export const useDesk = create<DeskState & DeskActions>()(
       },
       applyMacro: (macro) => set({ macro, lastTickAt: Date.now() }),
       setFeed: (feed) => set({ feed }),
-      select: (symbol) => set({ selected: symbol, lastTickAt: Date.now() }),
+      select: (symbol) => {
+        if (!symbol || symbol === get().selected) return;
+        set({ selected: symbol });
+      },
       setPaused: (paused) => set({ paused }),
       setAutopilot: (on) => {
         if (on && useTradingMode.getState().mode === "live") return;
@@ -394,7 +445,7 @@ export const useDesk = create<DeskState & DeskActions>()(
         set({
           agents: get().agents.map((a) => (a.id === id ? { ...a, status } : a)),
         }),
-      placeOrder: ({ symbol, side, qty, source, note, skipRisk }) => {
+      placeOrder: ({ symbol, side, qty, source, note, skipRisk, feeKind }) => {
         if (useTradingMode.getState().mode === "live") {
           return { ok: false as const, error: "Live orders from this desk are not signed yet. Switch to Demo to practice." };
         }
@@ -403,9 +454,13 @@ export const useDesk = create<DeskState & DeskActions>()(
         if (!asset || !asset.price) return { ok: false as const, error: "Waiting on the live tape." };
         const sized = isLot(symbol) || skipRisk ? qty : Math.round(qty);
         if (!Number.isFinite(sized) || sized <= 0) return { ok: false as const, error: "Size the ticket." };
+        if ((source === "council" || source === "autopilot") && teamBlocks(s.positions, symbol)) {
+          return { ok: false as const, error: "Team locked out of this trade." };
+        }
         const mark = asset.price;
-        const spread = isLot(symbol) ? 0.0004 : 0.00025;
-        const price = side === "buy" ? mark * (1 + spread) : mark * (1 - spread);
+        const price = mark;
+        const kind: FeeKind = feeKind ?? "taker";
+        const fee = hlFeeUsd(sized, price, kind);
         const priced = mergeAssets(s.assets);
         const adding = isAddOn(s.positions, symbol, side);
         if (!skipRisk && adding && addCountToday(s.fills, Date.now()) >= MAX_ADDS_PER_DAY) {
@@ -425,6 +480,8 @@ export const useDesk = create<DeskState & DeskActions>()(
           price,
           source,
           note,
+          fee,
+          feeKind: kind,
         };
         const next = applyFill(s.cash, s.positions, fill);
         if (!skipRisk && next.cash < -0.5) {
@@ -439,7 +496,7 @@ export const useDesk = create<DeskState & DeskActions>()(
           s.positions.find((p) => p.symbol === symbol),
           fill,
         );
-        const decorated = closed ? decorateClosed(closed, s.lastCouncil, fill, s.fills) : null;
+        const decorated = closed ? decorateClosed(closed, s.lastCouncil, fill, s.fills, s.locale) : null;
         const closedTrades = decorated ? [decorated, ...(s.closedTrades ?? [])].slice(0, 200) : (s.closedTrades ?? []);
         const eq = bookEquity(next.cash, stamped, priced);
         const stillOpen = Math.abs(stamped.find((p) => p.symbol === symbol)?.qty ?? 0) > 1e-8;
@@ -476,9 +533,21 @@ export const useDesk = create<DeskState & DeskActions>()(
         get().speak({
           kind: "fill",
           symbol,
-          text: `${side.toUpperCase()} ${sized.toFixed(isLot(symbol) ? 4 : 2)} ${symbol} @ ${price.toFixed(2)}${note ? ` · ${note}` : ""}`,
+          text: tapeFillText(fill, get().locale),
         });
         return { ok: true as const, fill };
+      },
+      toggleTeamLock: (symbol) => {
+        const s = get();
+        const pos = s.positions.find((p) => p.symbol === symbol);
+        if (!pos) return;
+        const next = !pos.teamLock;
+        set({
+          positions: s.positions.map((p) => (p.symbol === symbol ? { ...p, teamLock: next } : p)),
+          working: next && s.working?.symbol === symbol ? null : s.working,
+          proposal: next && s.proposal?.symbol === symbol ? null : s.proposal,
+          lastTickAt: Date.now(),
+        });
       },
       closePosition: (symbol, qty) => {
         const s = get();
@@ -494,16 +563,18 @@ export const useDesk = create<DeskState & DeskActions>()(
           side: pos.qty > 0 ? "sell" : "buy",
           qty: closeQty,
           source: "manual",
-          note: partial ? t("close.manualPartial") : t("close.manual"),
+          note: partial ? "close.manualPartial" : "close.manual",
           skipRisk: true,
         });
       },
       applyCouncil: (result, source, opts) => {
         const live = useTradingMode.getState().mode === "live";
+        const order =
+          result.order && teamBlocks(get().positions, result.order.symbol) ? null : result.order;
         set({
-          lastCouncil: result,
+          lastCouncil: { ...result, order },
           lastCouncilAt: Date.now(),
-          proposal: live ? null : stampProposal(result.order),
+          proposal: live ? null : stampProposal(order),
           agents: speechFromCouncil(result),
           convening: false,
           lastTickAt: Date.now(),
@@ -522,7 +593,7 @@ export const useDesk = create<DeskState & DeskActions>()(
             });
           }
         }
-        if (!live && get().autopilot && result.order) {
+        if (!live && get().autopilot && order) {
           get().executeProposal();
         }
       },
@@ -549,6 +620,10 @@ export const useDesk = create<DeskState & DeskActions>()(
         if (!proposal) return { ok: false as const, error: "No ticket on the rail." };
         if (proposal !== s.proposal) set({ proposal });
         const reducing = isReduce(s.positions, proposal.symbol, proposal.side);
+        if (teamBlocks(s.positions, proposal.symbol)) {
+          set({ proposal: null, lastTickAt: Date.now() });
+          return { ok: false as const, error: "Team locked out of this trade." };
+        }
         if (proposal.limitPx && proposal.limitPx > 0 && !reducing) {
           set({ working: proposal, proposal: null, lastTickAt: Date.now() });
           get().speak({
@@ -577,6 +652,10 @@ export const useDesk = create<DeskState & DeskActions>()(
         const s = get();
         const w = s.working;
         if (!w?.limitPx) return;
+        if (teamBlocks(s.positions, w.symbol)) {
+          set({ working: null });
+          return;
+        }
         const px = mergeAssets(s.assets)[w.symbol]?.price;
         if (!(px > 0)) return;
         const hit = w.side === "buy" ? px <= w.limitPx : px >= w.limitPx;
@@ -587,6 +666,7 @@ export const useDesk = create<DeskState & DeskActions>()(
           qty: w.qty,
           source: "council",
           note: w.rationale,
+          feeKind: "maker",
         });
         if (res.ok) {
           set({ working: null });
@@ -645,8 +725,6 @@ export const useDesk = create<DeskState & DeskActions>()(
         for (const u of UNIVERSE) {
           const a = assets[u.symbol];
           if (!a || !(a.price > 0)) continue;
-          const series = a.series.map((b) => b.px);
-          const mean = sma(series, 20);
           tickers.push({
             symbol: a.symbol,
             name: a.name,
@@ -655,12 +733,9 @@ export const useDesk = create<DeskState & DeskActions>()(
             changePct: changePct(a.price, a.open),
             high: a.high,
             low: a.low,
-            rsi: rsi(series),
-            vsSma: mean ? ((a.price - mean) / mean) * 100 : 0,
             livePx: a.livePx,
             liveBps: null,
-            ...tickerSetupFields(a.series, a.price),
-            rvol: relativeVolume(a.series),
+            ...analysisSnapshot(a.htf, a.price),
           });
         }
         if (!tickers.length) {
@@ -685,7 +760,7 @@ export const useDesk = create<DeskState & DeskActions>()(
             positions: s.positions.map((p) => {
               const px = assets[p.symbol]?.price || p.avg;
               const pnlPct = p.avg ? ((px - p.avg) / p.avg) * 100 * Math.sign(p.qty || 1) : 0;
-              return { symbol: p.symbol, qty: p.qty, avg: p.avg, pnlPct };
+              return { symbol: p.symbol, qty: p.qty, avg: p.avg, pnlPct, teamLock: Boolean(p.teamLock) };
             }),
           },
           macro: withEquityPct(s.macro, spyChg),
@@ -694,9 +769,12 @@ export const useDesk = create<DeskState & DeskActions>()(
       },
       hydrateBook: (book) => {
         const clean = scrubGhostAutopilot(book);
+        const keep = get().selected;
+        const selected =
+          keep && UNIVERSE.some((u) => u.symbol === keep) ? keep : (clean.selected || "BTC");
         set({
           cash: clean.cash,
-          positions: clean.positions,
+          positions: withTeamLocks(clean.positions, clean.fills),
           fills: clean.fills,
           closedTrades: clean.closedTrades,
           autopilot: clean.autopilot,
@@ -708,7 +786,7 @@ export const useDesk = create<DeskState & DeskActions>()(
           tape: clean.tape,
           proposal: liveProposal(clean.proposal),
           working: clean.working ?? null,
-          selected: clean.selected,
+          selected,
           lastAutoAt: clean.lastAutoAt,
           lastTickAt: clean.lastTickAt,
           fillSeq: clean.fillSeq,
@@ -739,6 +817,7 @@ export const useDesk = create<DeskState & DeskActions>()(
         const now = Date.now();
         const assets = mergeAssets(s.assets);
         for (const pos of s.positions) {
+          if (pos.teamLock) continue;
           const a = assets[pos.symbol];
           const v = viewOf(a);
           if (!v) continue;
@@ -748,7 +827,7 @@ export const useDesk = create<DeskState & DeskActions>()(
             side: pos.qty > 0 ? "sell" : "buy",
             qty: Math.abs(pos.qty),
             source: "council",
-            note: "Time stop",
+            note: promisingHold(pos, v.px, v.vsSma, v.dayChg) ? "close.timePromising" : "close.timeSession",
             skipRisk: true,
           });
         }
@@ -778,7 +857,12 @@ export const useDesk = create<DeskState & DeskActions>()(
         deskEpoch: s.deskEpoch,
         agentCalls: s.agentCalls,
         lastCouncilAt: s.lastCouncilAt,
+        locale: s.locale,
       }),
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+        state.positions = withTeamLocks(state.positions ?? [], state.fills ?? []);
+      },
     },
   ),
 );

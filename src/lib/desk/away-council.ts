@@ -2,8 +2,8 @@ import { localCouncil } from "@/lib/agents/local-council";
 import { compactScorecard, recordsFrom } from "@/lib/agents/scorecard";
 import { AGENTS } from "@/lib/agents/personas";
 import { t } from "@/lib/i18n/locale";
-import { changePct, rsi, sma } from "@/lib/market/engine";
-import { relativeVolume, tickerSetupFields } from "@/lib/market/setup";
+import { changePct } from "@/lib/market/engine";
+import { analysisSnapshot } from "@/lib/market/setup";
 import { withEquityPct } from "@/lib/market/macro";
 import { UNIVERSE } from "@/lib/market/universe";
 import type { LiveQuote } from "@/lib/market/quotes";
@@ -19,6 +19,7 @@ import type {
 } from "@/lib/types";
 import type { DeskBook } from "@/lib/desk/engine";
 import { stampProposal, liveProposal } from "@/lib/desk/proposal";
+import { teamBlocks } from "@/lib/desk/holds";
 
 export const AWAY_COUNCIL_MS = 5 * 60_000;
 
@@ -46,16 +47,16 @@ export function snapshotFromBook(
   for (const q of quotes) {
     const u = UNIVERSE.find((x) => x.symbol === q.symbol);
     if (!u || !(q.price > 0)) continue;
-    const series = q.series.map((b) => b.px);
-    const mean = sma(series, 20);
+    const px = q.livePx ?? q.price;
     assets[q.symbol] = {
       symbol: q.symbol,
       name: u.name,
-      price: q.livePx ?? q.price,
+      price: px,
       open: q.open || q.prevClose || q.price,
       high: q.high || q.price,
       low: q.low || q.price,
       series: q.series,
+      htf: q.htf,
       vol: u.vol,
       beta: u.beta,
       livePx: q.livePx,
@@ -66,17 +67,14 @@ export function snapshotFromBook(
     tickers.push({
       symbol: q.symbol,
       name: u.name,
-      price: q.livePx ?? q.price,
+      price: px,
       open: q.open || q.prevClose || q.price,
-      changePct: changePct(q.livePx ?? q.price, q.open || q.prevClose || q.price),
+      changePct: changePct(px, q.open || q.prevClose || q.price),
       high: q.high || q.price,
       low: q.low || q.price,
-      rsi: rsi(series),
-      vsSma: mean ? (((q.livePx ?? q.price) - mean) / mean) * 100 : 0,
       livePx: q.livePx,
       liveBps: null,
-      ...tickerSetupFields(q.series, q.livePx ?? q.price),
-      rvol: relativeVolume(q.series),
+      ...analysisSnapshot(q.htf, px),
     });
   }
   if (!tickers.length) return null;
@@ -94,7 +92,7 @@ export function snapshotFromBook(
       positions: book.positions.map((p) => {
         const px = assets[p.symbol]?.price || p.avg;
         const pnlPct = p.avg ? ((px - p.avg) / p.avg) * 100 * Math.sign(p.qty || 1) : 0;
-        return { symbol: p.symbol, qty: p.qty, avg: p.avg, pnlPct };
+        return { symbol: p.symbol, qty: p.qty, avg: p.avg, pnlPct, teamLock: Boolean(p.teamLock) };
       }),
     },
     macro: withEquityPct(macro, spyChg),
@@ -138,11 +136,12 @@ export function applyCouncilBook(
       conviction: a.conviction,
     };
   });
+  const order = result.order && teamBlocks(book.positions, result.order.symbol) ? null : result.order;
   let next: DeskBook = {
     ...book,
-    lastCouncil: result,
+    lastCouncil: { ...result, order },
     lastCouncilAt: now,
-    proposal: book.mode === "live" ? null : stampProposal(result.order, now),
+    proposal: book.mode === "live" ? null : stampProposal(order, now),
     agents,
     lastTickAt: now,
   };

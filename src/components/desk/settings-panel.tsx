@@ -17,9 +17,12 @@ import { useDesk } from "@/lib/desk-store";
 import { WalletCard } from "@/components/desk/wallet-card";
 import { replayDeskTour } from "@/components/desk/desk-tour";
 import type { Appearance } from "@/lib/theme";
-import { LanguageSwitch, useT, type MsgKey } from "@/lib/i18n";
+import { LanguageSwitch, useLocale, useT, type MsgKey } from "@/lib/i18n";
 import { useTradingMode } from "@/lib/trading-mode";
 import { cn } from "@/lib/utils";
+import { Switch } from "@/components/ui/switch";
+import { usePushAlerts } from "@/components/desk/alerts-button";
+import { TIMEZONES, setTz, useTz } from "@/lib/tz";
 
 const subscribeToNothing = () => () => {};
 const noGateOnServer = () => false;
@@ -46,7 +49,11 @@ export function SettingsPanel() {
         </div>
       </section>
 
+      <TzCard />
+
       {mode === "live" ? <WalletCard /> : null}
+
+      <PushCard />
 
       <section className="mt-3 rounded-xl bg-elevated p-3 shadow-[var(--shadow-border)]">
         <div className="text-sm font-medium">{t("settings.tour")}</div>
@@ -103,6 +110,61 @@ export function SettingsPanel() {
         </section>
       ) : null}
     </div>
+  );
+}
+
+function TzCard() {
+  const t = useT();
+  const locale = useLocale();
+  const tz = useTz();
+  return (
+    <section className="mt-3 rounded-xl bg-elevated p-3 shadow-[var(--shadow-border)]">
+      <div className="text-sm font-medium">{t("settings.tz")}</div>
+      <p className="mt-0.5 text-2xs leading-relaxed text-muted">{t("settings.tzBody")}</p>
+      <div className="mt-3 grid grid-cols-2 gap-1 rounded-lg bg-surface p-1">
+        {TIMEZONES.map((z) => (
+          <button
+            key={z.id}
+            type="button"
+            onClick={() => setTz(z.id)}
+            aria-pressed={tz === z.id}
+            className={cn(
+              "flex h-10 items-center justify-center rounded-md px-1 text-center text-2xs font-medium",
+              tz === z.id ? "bg-elevated text-fg" : "text-muted",
+            )}
+          >
+            {locale === "pl" ? z.pl : z.en}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PushCard() {
+  const t = useT();
+  const push = usePushAlerts();
+  return (
+    <section className="mt-3 rounded-xl bg-elevated p-3 shadow-[var(--shadow-border)]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm font-medium">{t("settings.push")}</div>
+          <p className="mt-0.5 text-2xs leading-relaxed text-muted">{t("settings.pushBody")}</p>
+          {push.blocked ? (
+            <p className="mt-1 text-2xs leading-relaxed text-muted">{t("alerts.blocked")}</p>
+          ) : null}
+        </div>
+        <Switch
+          checked={push.on}
+          disabled={push.blocked || push.busy}
+          onCheckedChange={(on) => {
+            if (on) void push.subscribe(true);
+            else void push.unsubscribe();
+          }}
+          aria-label={t("alerts.awayAria")}
+        />
+      </div>
+    </section>
   );
 }
 

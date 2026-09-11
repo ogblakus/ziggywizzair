@@ -58,8 +58,35 @@ export function stampOpened(prev: Position | undefined, next: Position[], fill: 
       ...p,
       openedAt: flip ? fill.ts : (prev?.openedAt ?? fill.ts),
       entryNote: flip ? fill.note : (prev?.entryNote ?? fill.note),
+      teamLock: flip ? fill.source === "manual" : Boolean(prev?.teamLock),
     };
   });
+}
+
+export function inferManualOpen(fills: Fill[], symbol: string) {
+  const ordered = [...fills].filter((f) => f.symbol === symbol).sort((a, b) => a.ts - b.ts);
+  let qty = 0;
+  let source: Fill["source"] = "council";
+  for (const f of ordered) {
+    const signed = f.side === "buy" ? f.qty : -f.qty;
+    const prev = qty;
+    qty += signed;
+    if (Math.abs(prev) < 1e-8 && Math.abs(qty) > 1e-8) source = f.source;
+  }
+  return source === "manual";
+}
+
+export function withTeamLocks(positions: Position[], fills: Fill[]): Position[] {
+  return positions.map((p) => ({
+    ...p,
+    teamLock: typeof p.teamLock === "boolean" ? p.teamLock : inferManualOpen(fills, p.symbol),
+  }));
+}
+
+export function teamBlocks(positions: Position[], symbol: string) {
+  const pos = positions.find((p) => p.symbol === symbol);
+  if (!pos || Math.abs(pos.qty) < 1e-8) return false;
+  return Boolean(pos.teamLock);
 }
 
 export function promisingHold(pos: Position, price: number, vsSma: number, dayChg: number) {

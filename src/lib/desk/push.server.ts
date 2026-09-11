@@ -164,9 +164,9 @@ async function pushAlerts(alerts: FillAlert[], userId?: string) {
   }
 }
 
-export async function notifyFills(fills: Fill[], closed: ClosedTrade[], userId?: string) {
+export async function notifyFills(fills: Fill[], closed: ClosedTrade[], userId?: string, locale: "en" | "pl" = "en") {
   if (!fills.length) return;
-  await pushAlerts(alertsForFills(fills, closed), userId);
+  await pushAlerts(alertsForFills(fills, closed, locale), userId);
 }
 
 export async function notifyProposal(order: ProposedOrder, locale: "en" | "pl", userId?: string) {

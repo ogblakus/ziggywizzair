@@ -505,7 +505,7 @@ export function DeskApp({ boot }: { boot: LiveMarketResult }) {
           /* settings live in the header gear */
         }}
       />
-      <DeskHeader focusChat={tab === "chat"} />
+      <DeskHeader focusChat={tab === "chat"} onConvene={convene} />
       <ProposalBanner />
       {tab === "chat" ? null : <OpenedStrip />}
 
@@ -539,7 +539,7 @@ export function DeskApp({ boot }: { boot: LiveMarketResult }) {
               </TabsList>
               <div className="min-h-0 flex-1 overflow-hidden">
                 {side === "floor" ? (
-                  <CouncilPanel />
+                  <CouncilPanel onConvene={convene} />
                 ) : side === "portfolio" ? (
                   <PortfolioPanel />
                 ) : side === "history" ? (
@@ -577,7 +577,7 @@ export function DeskApp({ boot }: { boot: LiveMarketResult }) {
             ) : null}
             {tab === "floor" ? (
               <section className="min-h-0 flex-1 overflow-hidden rounded-2xl bg-surface p-3 shadow-[var(--shadow-border)]">
-                <CouncilPanel />
+                <CouncilPanel onConvene={convene} />
               </section>
             ) : null}
             {tab === "chat" ? (

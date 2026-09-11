@@ -1,19 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Bell, BellOff, BellRing } from "lucide-react";
+import { Bell, BellRing } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { dropPushSubscription, getPushPublicKey, savePushSubscription } from "@/lib/desk/push-api";
 import { useDesk } from "@/lib/desk-store";
 import { isLot } from "@/lib/market/universe";
 import { qtyFmt, timeAgo } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { assetLabel, fillNoteLabel, fillSideLabel } from "@/lib/i18n/labels";
 import { t, useT } from "@/lib/i18n";
 import { useTradingMode } from "@/lib/trading-mode";
 
 type AlertState = "off" | "on" | "blocked" | "busy";
-const SEEN_KEY = "quorum-alerts-seen";
+const SEEN_KEY = "zw-alerts-seen";
 
 function withTimeout<T>(p: Promise<T>, ms: number) {
   return Promise.race([
@@ -40,13 +40,13 @@ function permissionOf(): NotificationPermission | "unsupported" {
 
 function readSeen() {
   if (typeof window === "undefined") return 0;
-  const n = Number(window.sessionStorage.getItem(SEEN_KEY) ?? 0);
+  const n = Number(window.localStorage.getItem(SEEN_KEY) ?? 0);
   return Number.isFinite(n) ? n : 0;
 }
 
 function writeSeen(ts: number) {
   try {
-    window.sessionStorage.setItem(SEEN_KEY, String(ts));
+    window.localStorage.setItem(SEEN_KEY, String(ts));
   } catch {
     /* ignore */
   }
@@ -157,7 +157,6 @@ export function AlertsButton({ className }: { className?: string }) {
   const allFills = useDesk((s) => s.fills);
   const fills = mode === "live" ? [] : allFills;
   const clock = useDesk((s) => s.clock);
-  const push = usePushAlerts();
   const [open, setOpen] = useState(false);
   const [seen, setSeen] = useState(0);
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
@@ -196,17 +195,17 @@ export function AlertsButton({ className }: { className?: string }) {
   }, [open]);
 
   const latest = fills[0]?.ts ?? 0;
-  const unread = latest > seen;
-  const Icon = push.blocked ? BellOff : unread ? BellRing : Bell;
+  const unread = fills.filter((f) => f.ts > seen).length;
+  const Icon = unread > 0 ? BellRing : Bell;
 
   function toggle() {
-    const next = !open;
-    setOpen(next);
-    if (next) {
-      const ts = Date.now();
-      writeSeen(ts);
-      setSeen(ts);
-    }
+    setOpen((v) => !v);
+  }
+
+  function markAll() {
+    const ts = Math.max(Date.now(), latest);
+    writeSeen(ts);
+    setSeen(ts);
   }
 
   return (
@@ -216,12 +215,12 @@ export function AlertsButton({ className }: { className?: string }) {
         size="icon-sm"
         aria-label={tt("alerts.aria")}
         aria-expanded={open}
-        className={className}
+        className={cn("relative", className)}
         onClick={toggle}
       >
-        <Icon className={cn("size-4", unread ? "text-fg" : "text-muted")} />
-        {unread ? (
-          <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-accent" />
+        <Icon className="size-4 text-fg" />
+        {unread > 0 ? (
+          <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-accent" />
         ) : null}
       </Button>
 
@@ -234,9 +233,19 @@ export function AlertsButton({ className }: { className?: string }) {
               className="overflow-hidden rounded-xl bg-surface shadow-[var(--shadow-border)]"
               style={{ position: "fixed", top: pos.top, left: pos.left, width: pos.width, zIndex: 80 }}
             >
-              <div className="flex items-center justify-between border-b border-border px-3 py-2">
+              <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
                 <div className="text-2xs font-medium tracking-wide text-subtle uppercase">{tt("alerts.title")}</div>
-                <span className="font-mono text-2xs text-subtle tabular-nums">{fills.length}</span>
+                {unread > 0 ? (
+                  <button
+                    type="button"
+                    onClick={markAll}
+                    className="text-2xs font-medium text-fg"
+                  >
+                    {tt("alerts.markAll")}
+                  </button>
+                ) : (
+                  <span className="font-mono text-2xs text-subtle tabular-nums">{fills.length}</span>
+                )}
               </div>
               <ul className="max-h-72 overflow-y-auto">
                 {fills.length === 0 ? (
@@ -245,7 +254,13 @@ export function AlertsButton({ className }: { className?: string }) {
                   </li>
                 ) : (
                   fills.slice(0, 24).map((f) => (
-                    <li key={f.id} className="border-b border-border px-3 py-2.5 last:border-b-0">
+                    <li
+                      key={f.id}
+                      className={cn(
+                        "border-b border-border px-3 py-2.5 last:border-b-0",
+                        f.ts > seen ? "bg-accent/10" : "",
+                      )}
+                    >
                       <div className="flex items-baseline justify-between gap-2">
                         <span
                           className={cn(
@@ -253,37 +268,19 @@ export function AlertsButton({ className }: { className?: string }) {
                             f.side === "buy" ? "text-up" : "text-down",
                           )}
                         >
-                          {f.side.toUpperCase()} {qtyFmt(f.qty, isLot(f.symbol))} {f.symbol}
+                          {fillSideLabel(f.side)} {qtyFmt(f.qty, isLot(f.symbol))} {assetLabel(f.symbol)}
                         </span>
                         <span className="font-mono text-2xs text-subtle tabular-nums">
                           {timeAgo(f.ts, clock)}
                         </span>
                       </div>
                       <div className="mt-0.5 font-mono text-2xs text-muted tabular-nums">
-                        @{f.price.toFixed(2)}
-                        {f.note ? ` · ${f.note}` : ` · ${f.source}`}
+                        @{f.price.toFixed(2)} · {fillNoteLabel(f.note, f.source)}
                       </div>
                     </li>
                   ))
                 )}
               </ul>
-              <div className="flex items-center justify-between gap-3 border-t border-border px-3 py-2.5">
-                <div>
-                  <div className="text-2xs font-medium">{tt("alerts.away")}</div>
-                  <p className="text-2xs leading-relaxed text-subtle">
-                    {push.blocked ? tt("alerts.blocked") : tt("alerts.awayOn")}
-                  </p>
-                </div>
-                <Switch
-                  checked={push.on}
-                  disabled={push.blocked || push.busy}
-                  onCheckedChange={(on) => {
-                    if (on) void push.subscribe(true);
-                    else void push.unsubscribe();
-                  }}
-                  aria-label={tt("alerts.awayAria")}
-                />
-              </div>
             </div>,
             document.body,
           )

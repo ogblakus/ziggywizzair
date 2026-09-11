@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Settings, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { AlertsButton } from "@/components/desk/alerts-button";
-import { AutopilotSwitch } from "@/components/desk/autopilot-switch";
+import { FloorControls } from "@/components/desk/autopilot-switch";
 import { APP_NAME, ModeKicker, PlaneMark } from "@/components/desk/brand";
 import { SettingsPanel } from "@/components/desk/settings-panel";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,13 @@ import { useTradingMode } from "@/lib/trading-mode";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
-export function DeskHeader({ focusChat = false }: { focusChat?: boolean }) {
+export function DeskHeader({
+  focusChat = false,
+  onConvene,
+}: {
+  focusChat?: boolean;
+  onConvene?: () => void;
+}) {
   const setAutopilot = useDesk((s) => s.setAutopilot);
   const feed = useFeed();
   const mode = useTradingMode((s) => s.mode);
@@ -62,16 +68,7 @@ export function DeskHeader({ focusChat = false }: { focusChat?: boolean }) {
         <div className="ml-auto flex min-w-0 items-center gap-1.5 sm:gap-3">
           <LiveStats className={cn("hidden md:contents", focusChat && "md:hidden")} />
 
-          {mode === "demo" ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="hidden lg:block">
-                  <AutopilotSwitch className="hidden lg:flex" />
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>{t("header.autopilotTip")}</TooltipContent>
-            </Tooltip>
-          ) : null}
+          {onConvene ? <FloorControls onConvene={onConvene} className="hidden lg:flex" /> : null}
 
           <AlertsButton />
 
@@ -221,16 +218,18 @@ function LiveStats({ mobile, className }: { mobile?: boolean; className?: string
       ? livePos.reduce((sum, p) => sum + p.pnl, 0)
       : demoEq - starting;
   const pnlPct = mode === "live" ? 0 : starting ? (pnl / starting) * 100 : 0;
+  const equityLabel = mode === "live" ? t("header.equityHl") : t("header.equity");
+  const cashLabel = mode === "live" ? t("header.cashHl") : t("header.cash");
 
   if (mobile) {
     return (
       <>
         <div>
-          <div className="text-2xs font-medium tracking-wide text-subtle uppercase">{t("header.equity")}</div>
+          <div className="text-2xs font-medium tracking-wide text-subtle uppercase">{equityLabel}</div>
           <div className="font-mono text-sm tabular-nums">{money(equity)}</div>
         </div>
         <div>
-          <div className="text-2xs font-medium tracking-wide text-subtle uppercase">{t("header.cash")}</div>
+          <div className="text-2xs font-medium tracking-wide text-subtle uppercase">{cashLabel}</div>
           <div className="font-mono text-sm tabular-nums text-muted">{money(cashShown)}</div>
         </div>
         <div className="text-right">
@@ -243,13 +242,13 @@ function LiveStats({ mobile, className }: { mobile?: boolean; className?: string
 
   return (
     <div className={className}>
-      <Stat label={t("header.equity")} value={money(equity)} />
+      <Stat label={equityLabel} value={money(equity)} />
       <Stat
         label={t("header.pnl")}
         value={mode === "live" ? money(pnl) : pct(pnlPct)}
         tone={signedClass(pnl)}
       />
-      <Stat label={t("header.cash")} value={money(cashShown)} muted className="hidden md:block" />
+      <Stat label={cashLabel} value={money(cashShown)} muted className="hidden md:block" />
     </div>
   );
 }

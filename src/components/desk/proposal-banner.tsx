@@ -7,6 +7,7 @@ import { liveProposal, proposalMsLeft, PROPOSAL_TTL_MS } from "@/lib/desk/propos
 import { useDesk } from "@/lib/desk-store";
 import { useTradingMode } from "@/lib/trading-mode";
 import { txError, useT } from "@/lib/i18n";
+import { assetLabel } from "@/lib/i18n/labels";
 
 function clock(ms: number) {
   const s = Math.max(0, Math.ceil(ms / 1000));
@@ -52,7 +53,7 @@ export function ProposalBanner() {
         <div className="min-w-0 flex-1">
           <p className="text-2xs font-medium tracking-wide text-subtle uppercase">{t("floor.proposed")}</p>
           <p className="mt-0.5 font-mono text-sm tabular-nums text-fg">
-            {proposal.side.toUpperCase()} {qtyFmt(proposal.qty, isLot(proposal.symbol))} {proposal.symbol}
+            {proposal.side.toUpperCase()} {qtyFmt(proposal.qty, isLot(proposal.symbol))} {assetLabel(proposal.symbol)}
             {proposal.limitPx ? ` · ${t("floor.limitAt", { px: compactPrice(proposal.limitPx) })}` : ""}
           </p>
           <p className="mt-0.5 text-2xs leading-relaxed text-muted">{proposal.rationale}</p>

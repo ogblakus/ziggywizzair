@@ -33,6 +33,7 @@ export function gateCouncilOrder(
   const kaiOk = kai?.symbol === order.symbol && kai.vote === order.side;
   const pos = snap.book.positions.find((p) => p.symbol === order.symbol);
   const open = pos && Math.abs(pos.qty) > 1e-8;
+  if (open && pos.teamLock) return null;
   const reducing =
     open && ((pos.qty > 0 && order.side === "sell") || (pos.qty < 0 && order.side === "buy"));
   if (reducing) return scouts.length >= 1 || kaiOk ? order : null;

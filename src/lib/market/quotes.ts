@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { UNIVERSE } from "@/lib/market/universe";
-import type { TickBar } from "@/lib/types";
-import { loadDeskMids, loadHlCandles } from "@/lib/wallet/hyperliquid";
+import type { HtfPack, TickBar } from "@/lib/types";
+import { loadDeskMids, loadHlCandles, loadHlChart5, loadHlHtf } from "@/lib/wallet/hyperliquid";
 
 export type LiveQuote = {
   symbol: string;
@@ -11,6 +11,8 @@ export type LiveQuote = {
   high: number;
   low: number;
   series: TickBar[];
+  chart5?: TickBar[];
+  htf?: HtfPack;
   livePx: number | null;
   liveCoin: string | null;
   spotPx: number | null;
@@ -146,7 +148,12 @@ async function fetchCoinGeckoCrypto(): Promise<Map<string, { price: number; chan
 async function pullQuotes(): Promise<LiveMarketResult> {
   const now = Date.now();
   try {
-    const [mids, hlCandles] = await Promise.all([loadDeskMids(), loadHlCandles(3)]);
+    const [mids, hlCandles, chart5, htf] = await Promise.all([
+      loadDeskMids(),
+      loadHlCandles(3),
+      loadHlChart5(),
+      loadHlHtf(),
+    ]);
     const quotes: LiveQuote[] = [];
     const needYahoo: typeof UNIVERSE = [];
     for (const u of UNIVERSE) {
@@ -240,6 +247,10 @@ async function pullQuotes(): Promise<LiveMarketResult> {
       }
     }
     if (!quotes.length) return { ok: false, error: "Tape is dark" };
+    for (const q of quotes) {
+      q.htf = htf[q.symbol];
+      q.chart5 = chart5[q.symbol];
+    }
     quotes.sort(
       (a, b) =>
         UNIVERSE.findIndex((u) => u.symbol === a.symbol) -

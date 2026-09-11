@@ -2,13 +2,14 @@ import { useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { AGENT_BY_ID } from "@/lib/agents/personas";
 import { compactPrice, money, pct, signedClass } from "@/lib/format";
-import { explainTrade, humanCloseNote } from "@/lib/portfolio";
+import { explainTrade, humanCloseNote, humanEntryNote } from "@/lib/portfolio";
+import { reflectClosed } from "@/lib/agents/reflect";
 import { useDesk } from "@/lib/desk-store";
 import { useLocale, useT, type Locale } from "@/lib/i18n";
 import { useTradingMode } from "@/lib/trading-mode";
 import { useLiveWallet } from "@/lib/wallet/live-store";
 import { cn } from "@/lib/utils";
-import type { ClosedTrade } from "@/lib/types";
+import { assetLabel } from "@/lib/i18n/labels";
 
 function dayKey(ts: number) {
   const d = new Date(ts);
@@ -125,7 +126,7 @@ export function HistoryPanel() {
                           className="flex w-full items-center justify-between gap-2 px-2.5 py-2 text-left"
                         >
                           <span className="min-w-0">
-                            <span className="block font-mono text-sm font-medium">{row.symbol}</span>
+                            <span className="block font-mono text-sm font-medium">{assetLabel(row.symbol)}</span>
                             <span className="block text-2xs text-muted capitalize">
                               {side}
                               {held(row.openedAt, row.ts, locale) ? ` · ${held(row.openedAt, row.ts, locale)}` : ""}
@@ -156,7 +157,8 @@ export function HistoryPanel() {
 function TradeBody({ row }: { row: ClosedTrade }) {
   const t = useT();
   const locale = useLocale();
-  const analysis = explainTrade(row, locale) || row.analysis || t("hist.none");
+  const reflections = reflectClosed(row, null, locale);
+  const analysis = explainTrade({ ...row, agents: reflections }, locale) || t("hist.none");
   return (
     <div className="space-y-2 border-t border-border px-2.5 py-2 text-sm leading-relaxed">
       <p className="font-mono text-2xs text-muted tabular-nums">
@@ -173,19 +175,27 @@ function TradeBody({ row }: { row: ClosedTrade }) {
         <dd className="font-mono tabular-nums text-fg">{stamp(row.ts, locale)}</dd>
         <dt className="text-subtle">{t("hist.held")}</dt>
         <dd className="font-mono tabular-nums text-fg">{held(row.openedAt, row.ts, locale) ?? t("hist.none")}</dd>
+        {row.fees != null && row.fees > 0 ? (
+          <>
+            <dt className="text-subtle">{t("hist.fees")}</dt>
+            <dd className="font-mono tabular-nums text-fg">{money(row.fees)}</dd>
+          </>
+        ) : null}
       </dl>
       <Block label={t("hist.analysis")} body={analysis} />
-      <Block label={t("hist.whyIn")} body={row.entryNote || t("hist.none")} />
+      <Block label={t("hist.whyIn")} body={humanEntryNote(row.entryNote, locale)} />
       <Block label={t("hist.whyOut")} body={humanCloseNote(row, locale)} />
       <div>
         <p className="text-2xs font-medium tracking-wide text-subtle uppercase">{t("hist.agents")}</p>
-        {row.agents?.length ? (
+        {reflections.length ? (
           <ul className="mt-1 space-y-1.5">
-            {row.agents.map((a) => (
+            {reflections.map((a) => (
               <li key={a.id} className="rounded-md bg-elevated px-2 py-1.5">
                 <p className="text-2xs font-medium">
                   {AGENT_BY_ID[a.id]?.name ?? a.id}
-                  <span className="ml-1.5 font-mono font-normal text-muted uppercase">{a.vote}</span>
+                  <span className="ml-1.5 font-mono font-normal text-muted">
+                    {t(a.vote === "buy" ? "vote.buy" : a.vote === "sell" ? "vote.sell" : "vote.hold")}
+                  </span>
                 </p>
                 <p className="mt-0.5 text-2xs leading-relaxed text-muted">{a.thesis}</p>
               </li>

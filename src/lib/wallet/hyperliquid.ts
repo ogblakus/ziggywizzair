@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { clientIp, rateLimit } from "@/lib/security/limit";
-import type { ClosedTrade } from "@/lib/types";
+import type { ClosedTrade, HtfPack, TickBar } from "@/lib/types";
 
 export type PerpRoute = { coin: string; dex: "" | "xyz"; scale?: number };
 
@@ -63,52 +63,95 @@ export async function loadDeskMids(): Promise<Record<string, { mid: number; coin
   return midsInflight;
 }
 
-export async function loadHlCandles(
-  hours = 3,
-): Promise<Record<string, Array<{ t: number; px: number; v?: number }>>> {
+type HlInterval = "1m" | "5m" | "15m" | "1h" | "4h";
+
+function parseBars(raw: unknown, scale: number, keep: number): TickBar[] {
+  if (!Array.isArray(raw)) return [];
+  const series: TickBar[] = [];
+  for (const bar of raw) {
+    const r = bar as {
+      t?: number;
+      c?: string | number;
+      o?: string | number;
+      h?: string | number;
+      l?: string | number;
+      v?: string | number;
+    };
+    const tRaw = Number(r.t);
+    const t = tRaw > 0 && tRaw < 1e11 ? tRaw * 1000 : tRaw;
+    const px = Number(r.c) / scale;
+    const v = Number(r.v);
+    const o = Number(r.o) / scale;
+    const h = Number(r.h) / scale;
+    const l = Number(r.l) / scale;
+    if (Number.isFinite(t) && Number.isFinite(px) && px > 0) {
+      const row: TickBar = { t, px };
+      if (Number.isFinite(v) && v > 0) row.v = v;
+      if (Number.isFinite(o) && o > 0) row.o = o;
+      if (Number.isFinite(h) && h > 0) row.h = h;
+      if (Number.isFinite(l) && l > 0) row.l = l;
+      series.push(row);
+    }
+  }
+  return series.slice(-keep);
+}
+
+const candleMemo: Partial<Record<HlInterval, { at: number; data: Record<string, TickBar[]>; ttl: number }>> = {};
+const candleWait: Partial<Record<HlInterval, Promise<Record<string, TickBar[]>>>> = {};
+
+async function loadInterval(interval: HlInterval, hours: number, keep: number, ttl: number) {
   const now = Date.now();
-  const startTime = now - hours * 60 * 60 * 1000;
-  const out: Record<string, Array<{ t: number; px: number; v?: number }>> = {};
-  await Promise.all(
-    Object.entries(DESK_TO_PERP).map(async ([desk, row]) => {
-      try {
-        const raw = await hlInfo({
-          type: "candleSnapshot",
-          req: { coin: row.coin, interval: "1m", startTime, endTime: now },
-        });
-        if (!Array.isArray(raw)) return;
-        const scale = row.scale ?? 1;
-        const series: Array<{ t: number; px: number; v?: number; o?: number; h?: number; l?: number }> = [];
-        for (const bar of raw) {
-          const r = bar as {
-            t?: number;
-            c?: string | number;
-            o?: string | number;
-            h?: string | number;
-            l?: string | number;
-            v?: string | number;
+  const hit = candleMemo[interval];
+  if (hit && now - hit.at < hit.ttl && Object.keys(hit.data).length) return hit.data;
+  if (candleWait[interval]) return candleWait[interval]!;
+  const run = (async () => {
+    const prev = hit?.data ?? {};
+    const startTime = Date.now() - hours * 60 * 60 * 1000;
+    const endTime = Date.now();
+    const out: Record<string, TickBar[]> = { ...prev };
+    await Promise.all(
+      Object.entries(DESK_TO_PERP).map(async ([desk, row]) => {
+        try {
+          const payload: Record<string, unknown> = {
+            type: "candleSnapshot",
+            req: { coin: row.coin, interval, startTime, endTime },
           };
-          const t = Number(r.t);
-          const px = Number(r.c) / scale;
-          const v = Number(r.v);
-          const o = Number(r.o) / scale;
-          const h = Number(r.h) / scale;
-          const l = Number(r.l) / scale;
-          if (Number.isFinite(t) && Number.isFinite(px) && px > 0) {
-            const row: { t: number; px: number; v?: number; o?: number; h?: number; l?: number } = { t, px };
-            if (Number.isFinite(v) && v > 0) row.v = v;
-            if (Number.isFinite(o) && o > 0) row.o = o;
-            if (Number.isFinite(h) && h > 0) row.h = h;
-            if (Number.isFinite(l) && l > 0) row.l = l;
-            series.push(row);
-          }
+          if (row.dex) payload.dex = row.dex;
+          const raw = await hlInfo(payload, 15_000);
+          const series = parseBars(raw, row.scale ?? 1, keep);
+          if (series.length) out[desk] = series;
+        } catch {
+          /* keep previous pack */
         }
-        if (series.length >= 12) out[desk] = series.slice(-90);
-      } catch {
-        /* Yahoo still fills the chart */
-      }
-    }),
-  );
+      }),
+    );
+    if (Object.keys(out).length) candleMemo[interval] = { at: Date.now(), data: out, ttl };
+    return out;
+  })().finally(() => {
+    candleWait[interval] = undefined;
+  });
+  candleWait[interval] = run;
+  return run;
+}
+
+export async function loadHlCandles(hours = 3): Promise<Record<string, TickBar[]>> {
+  return loadInterval("1m", hours, 90, 8_000);
+}
+
+export async function loadHlChart5(): Promise<Record<string, TickBar[]>> {
+  return loadInterval("5m", 8, 90, 20_000);
+}
+
+export async function loadHlHtf(): Promise<Record<string, HtfPack>> {
+  const [m15, h1, h4] = await Promise.all([
+    loadInterval("15m", 26, 96, 20_000),
+    loadInterval("1h", 96, 80, 90_000),
+    loadInterval("4h", 240, 60, 180_000),
+  ]);
+  const out: Record<string, HtfPack> = {};
+  for (const desk of Object.keys(DESK_TO_PERP)) {
+    out[desk] = { m15: m15[desk] ?? [], h1: h1[desk] ?? [], h4: h4[desk] ?? [] };
+  }
   return out;
 }
 
@@ -163,12 +206,12 @@ const USDC_ARB = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831";
 const USDC_ARB_E = "0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8";
 const WBTC_ETH = "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599";
 
-async function hlInfo(body: Record<string, unknown>): Promise<unknown> {
+async function hlInfo(body: Record<string, unknown>, ms = 8_000): Promise<unknown> {
   const res = await fetch(HL, {
     method: "POST",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(8_000),
+    signal: AbortSignal.timeout(ms),
   });
   if (!res.ok) throw new Error(`Hyperliquid ${res.status}`);
   return res.json();

@@ -18,7 +18,10 @@ import type {
 } from "@/lib/types";
 import { AGENTS } from "@/lib/agents/personas";
 import { closeCallsFor, openCall, proposerFrom } from "@/lib/agents/scorecard";
-import { addCountToday, holdExpired, isAddOn, MAX_ADDS_PER_DAY, promisingHold, stampOpened } from "@/lib/desk/holds";
+import { addCountToday, holdExpired, isAddOn, MAX_ADDS_PER_DAY, promisingHold, stampOpened, teamBlocks } from "@/lib/desk/holds";
+import { hlFeeUsd, hlRoundTripPct, type FeeKind } from "@/lib/desk/fees";
+import { t } from "@/lib/i18n/locale";
+import { tapeFillText } from "@/lib/i18n/labels";
 
 export type DeskBook = {
   cash: number;
@@ -98,13 +101,14 @@ export function applyFill(
   fill: Fill,
 ): { cash: number; positions: Position[] } {
   const signed = fill.side === "buy" ? fill.qty : -fill.qty;
+  const fee = fill.fee ?? 0;
   const existing = positions.find((p) => p.symbol === fill.symbol);
 
   if (!existing || Math.abs(existing.qty) < 1e-8) {
     const rest = positions.filter((p) => p.symbol !== fill.symbol);
     return {
-      cash: cash - Math.abs(signed) * fill.price,
-      positions: [...rest, { symbol: fill.symbol, qty: signed, avg: fill.price }],
+      cash: cash - Math.abs(signed) * fill.price - fee,
+      positions: [...rest, { symbol: fill.symbol, qty: signed, avg: fill.price, fees: fee }],
     };
   }
 
@@ -119,16 +123,18 @@ export function applyFill(
         ? fill.price
         : (absOld * existing.avg + absAdd * fill.price) / (absOld + absAdd);
     return {
-      cash: cash - absAdd * fill.price,
+      cash: cash - absAdd * fill.price - fee,
       positions: positions.map((p) =>
-        p.symbol === fill.symbol ? { ...p, qty: newQty, avg } : p,
+        p.symbol === fill.symbol ? { ...p, qty: newQty, avg, fees: (p.fees ?? 0) + fee } : p,
       ),
     };
   }
 
   const closedQty = Math.min(Math.abs(oldQty), Math.abs(signed));
   const realized = (fill.price - existing.avg) * closedQty * Math.sign(oldQty);
-  let nextCash = cash + closedQty * existing.avg + realized;
+  const share = closedQty / Math.abs(oldQty);
+  const remainFees = (existing.fees ?? 0) * (1 - share);
+  let nextCash = cash + closedQty * existing.avg + realized - fee;
   if (Math.abs(newQty) < 1e-8) {
     return {
       cash: nextCash,
@@ -138,25 +144,24 @@ export function applyFill(
   if (Math.sign(newQty) === Math.sign(oldQty)) {
     return {
       cash: nextCash,
-      positions: positions.map((p) => (p.symbol === fill.symbol ? { ...p, qty: newQty } : p)),
+      positions: positions.map((p) =>
+        p.symbol === fill.symbol ? { ...p, qty: newQty, fees: remainFees } : p,
+      ),
     };
   }
   nextCash -= Math.abs(newQty) * fill.price;
   return {
     cash: nextCash,
     positions: positions.map((p) =>
-      p.symbol === fill.symbol ? { symbol: p.symbol, qty: newQty, avg: fill.price } : p,
+      p.symbol === fill.symbol
+        ? { symbol: p.symbol, qty: newQty, avg: fill.price, fees: fee }
+        : p,
     ),
   };
 }
 
-const PAPER_SPREAD_LOT = 0.0004;
-const PAPER_SPREAD = 0.00025;
-const LIVE_ROUNDTRIP_FEE_PCT = 0.29;
-
-export function estimatedRoundTripFeePct(symbol: string, live = false) {
-  const spreadPct = (isLot(symbol) ? PAPER_SPREAD_LOT : PAPER_SPREAD) * 2 * 100;
-  return live ? Math.max(spreadPct, LIVE_ROUNDTRIP_FEE_PCT) : spreadPct;
+export function estimatedRoundTripFeePct(_symbol?: string, _live = false) {
+  return hlRoundTripPct();
 }
 
 export function feeCapOk(symbol: string, qty: number, price: number, live = false) {
@@ -185,6 +190,7 @@ export function notionalOk(
     return false;
   }
   if (!feeCapOk(symbol, qty, price)) return false;
+  const fee = hlFeeUsd(qty, price, "taker");
   return (
     applyFill(cash, positions, {
       id: "probe",
@@ -194,6 +200,8 @@ export function notionalOk(
       qty,
       price,
       source: "manual",
+      fee,
+      feeKind: "taker",
     }).cash >= -0.5
   );
 }
@@ -220,12 +228,19 @@ export function commitFill(
     source: Fill["source"];
     note?: string;
     skipRisk?: boolean;
+    feeKind?: FeeKind;
     ts: number;
     assets: Record<string, MarketAsset>;
   },
 ): { ok: true; book: DeskBook; fill: Fill } | { ok: false; error: string } {
   const sized = isLot(input.symbol) || input.skipRisk ? input.qty : Math.round(input.qty);
   if (!Number.isFinite(sized) || sized <= 0) return { ok: false, error: "Size the ticket." };
+  if (
+    (input.source === "council" || input.source === "autopilot") &&
+    teamBlocks(book.positions, input.symbol)
+  ) {
+    return { ok: false, error: "Team locked out of this trade." };
+  }
   const adding = isAddOn(book.positions, input.symbol, input.side);
   if (!input.skipRisk && adding && addCountToday(book.fills, input.ts) >= MAX_ADDS_PER_DAY) {
     return { ok: false, error: "Iris veto — two adds today." };
@@ -245,6 +260,8 @@ export function commitFill(
     price: input.price,
     source: input.source,
     note: input.note,
+    feeKind: input.feeKind ?? "taker",
+    fee: hlFeeUsd(sized, input.price, input.feeKind ?? "taker"),
   };
   const next = applyFill(book.cash, book.positions, fill);
   const stamped = stampOpened(
@@ -257,7 +274,7 @@ export function commitFill(
     book.positions.find((p) => p.symbol === input.symbol),
     fill,
   );
-  const decorated = closed ? decorateClosed(closed, book.lastCouncil, fill, book.fills) : null;
+  const decorated = closed ? decorateClosed(closed, book.lastCouncil, fill, book.fills, book.locale) : null;
   const closedTrades = decorated ? [decorated, ...book.closedTrades].slice(0, 200) : book.closedTrades;
   const eq = equityOf(next.cash, stamped, input.assets);
   const stillOpen = Math.abs(stamped.find((p) => p.symbol === input.symbol)?.qty ?? 0) > 1e-8;
@@ -279,7 +296,7 @@ export function commitFill(
     kind: "fill",
     symbol: input.symbol,
     ts: input.ts,
-    text: `${input.side.toUpperCase()} ${sized.toFixed(isLot(input.symbol) ? 4 : 2)} ${input.symbol} @ ${input.price.toFixed(2)}${input.note ? ` · ${input.note}` : ""}`,
+    text: tapeFillText(fill, book.locale),
   });
   return { ok: true, book: out, fill };
 }
@@ -312,6 +329,7 @@ export function expireHolds(book: DeskBook, quotes: LiveQuote[], now: number): D
   for (const pos of book.positions) {
     const v = bySym.get(pos.symbol);
     if (!v) continue;
+    if (pos.teamLock) continue;
     if (!holdExpired(pos, now, v.price, v.vsSma, v.changePct)) continue;
     const side = pos.qty > 0 ? "sell" : "buy";
     const note = promisingHold(pos, v.price, v.vsSma, v.changePct)
@@ -368,6 +386,7 @@ export function fillWorking(book: DeskBook, quotes: LiveQuote[], now: number): D
     price: px,
     source: "council",
     note: w.rationale,
+    feeKind: "maker",
     skipRisk: false,
     ts: now,
     assets,
@@ -440,13 +459,13 @@ export function autopilotOnce(book: DeskBook, views: TickerView[], now: number):
   if (!row || !(row.price > 0)) return { ...book, lastTickAt: now };
   const existing = book.positions.find((p) => p.symbol === ticket.symbol);
   const open = existing && Math.abs(existing.qty) > 1e-8;
+  if (open && existing.teamLock) return { ...book, lastAutoAt: now, lastTickAt: now };
   const reducing =
     open && ((existing.qty > 0 && ticket.side === "sell") || (existing.qty < 0 && ticket.side === "buy"));
   if (open && !reducing) return { ...book, lastAutoAt: now, lastTickAt: now };
   const note = reducing ? "close.contrary" : ticket.rationale;
   const assets = assetsFromViews(views);
-  const spread = isLot(ticket.symbol) ? 0.0004 : 0.00025;
-  const price = ticket.side === "buy" ? row.price * (1 + spread) : row.price * (1 - spread);
+  const price = row.price;
   const filled = commitFill(
     { ...book, lastAutoAt: now, lastTickAt: now },
     {
@@ -513,13 +532,13 @@ export function catchUpBook(book: DeskBook, quotes: LiveQuote[], now: number): D
     next = speak(next, {
       kind: "system",
       ts: now,
-      text: `While the desk was dark, autopilot printed ${added} fill${added === 1 ? "" : "s"}. Book is live.`,
+      text: t("tape.awayFills", { n: added }, book.locale),
     });
   } else {
     next = speak(next, {
       kind: "system",
       ts: now,
-      text: "Desk was dark. Autopilot held — no new probe while you were away.",
+      text: t("tape.awayQuiet", undefined, book.locale),
     });
   }
   return next;

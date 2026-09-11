@@ -1,4 +1,4 @@
-import { memo, useState, type PointerEvent } from "react";
+import { memo, useRef, useState, type PointerEvent } from "react";
 import { cn } from "@/lib/utils";
 import type { TickBar } from "@/lib/types";
 
@@ -44,19 +44,34 @@ const PLOT_PX = 168;
 const UP = "#3d9a7a";
 const DOWN = "#c45c5c";
 
+function sameBars(a: TickBar[], b: TickBar[]) {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  const la = a.at(-1);
+  const lb = b.at(-1);
+  const fa = a[0];
+  const fb = b[0];
+  return la?.t === lb?.t && la?.px === lb?.px && fa?.t === fb?.t && fa?.px === fb?.px;
+}
+
 /** Inline SVG with a pixel height — flex/%/canvas all collapsed to 0 on iPhone. */
 export const PriceArea = memo(function PriceArea({
   bars,
   up,
   onScrub,
   fill,
+  resetKey,
+  emptyLabel,
 }: {
   bars: TickBar[];
   up: boolean;
   onScrub?: (bar: TickBar | null) => void;
   fill?: boolean;
+  resetKey?: string;
+  emptyLabel?: string;
 }) {
   const [hover, setHover] = useState<number | null>(null);
+  const domain = useRef({ min: 0, max: 1, key: "" });
   const pts = bars.filter((b) => Number.isFinite(b.px));
   const box = fill
     ? { height: "100%", minHeight: 110 }
@@ -64,13 +79,22 @@ export const PriceArea = memo(function PriceArea({
   if (pts.length < 2) {
     return (
       <div className="flex w-full items-center justify-center text-sm text-muted" style={box}>
-        Waiting on the tape.
+        {emptyLabel ?? "…"}
       </div>
     );
   }
   const values = pts.map((b) => b.px);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  const rawMin = Math.min(...values);
+  const rawMax = Math.max(...values);
+  const key = resetKey ?? "";
+  if (domain.current.key !== key) {
+    domain.current = { min: rawMin, max: rawMax, key };
+  } else {
+    if (rawMin < domain.current.min) domain.current.min = rawMin;
+    if (rawMax > domain.current.max) domain.current.max = rawMax;
+  }
+  const min = domain.current.min;
+  const max = domain.current.max;
   const span = max - min || 1;
   const padY = 6;
   const coords = values.map((v, i) => {
@@ -141,4 +165,4 @@ export const PriceArea = memo(function PriceArea({
       ) : null}
     </svg>
   );
-});
+}, (a, b) => a.up === b.up && a.fill === b.fill && a.resetKey === b.resetKey && sameBars(a.bars, b.bars));

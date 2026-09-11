@@ -105,6 +105,7 @@ export function txError(message: string, locale = getLocale()): string {
     "Live orders from this desk are not signed yet. Switch to Demo to practice.": "err.livePlace",
     "Reset clears the demo book. Switch to Demo first.": "err.liveReset",
     "Iris veto — two adds today.": "err.irisAdds",
+    "Team locked out of this trade.": "err.teamLock",
   };
   const key = map[message];
   return key ? t(key, undefined, locale) : message;

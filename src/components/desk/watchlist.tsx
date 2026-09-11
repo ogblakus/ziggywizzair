@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { Sparkline } from "@/components/desk/sparkline";
-import { compactPrice, pct, signedClass } from "@/lib/format";
+import { TickerMark } from "@/components/desk/ticker-mark";
+import { chipPrice, compactPrice, pct, signedClass } from "@/lib/format";
 import { changePct } from "@/lib/market/engine";
 import { UNIVERSE } from "@/lib/market/universe";
 import { useAssets, useDesk } from "@/lib/desk-store";
@@ -8,6 +9,7 @@ import { useMark } from "@/lib/marks-store";
 import type { MarketAsset, Position } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
+import { assetName, assetLabel } from "@/lib/i18n/labels";
 
 export function Watchlist() {
   const assets = useAssets();
@@ -31,7 +33,7 @@ export function Watchlist() {
             <WatchlistRow
               key={u.symbol}
               asset={a}
-              name={u.name}
+              name={assetName(u.symbol)}
               active={selected === u.symbol}
               held={held}
               onSelect={select}
@@ -73,9 +75,10 @@ const WatchlistRow = memo(function WatchlistRow({
           active ? "bg-elevated" : "hover:bg-elevated/60",
         )}
       >
+        <TickerMark symbol={asset.symbol} className="size-7" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <span className="font-mono text-sm font-medium tabular-nums">{asset.symbol}</span>
+            <span className="font-mono text-sm font-medium tabular-nums">{assetLabel(asset.symbol)}</span>
             {held ? (
               <span
                 className={cn(
@@ -87,14 +90,24 @@ const WatchlistRow = memo(function WatchlistRow({
               </span>
             ) : null}
           </div>
-          <div className="truncate text-2xs text-subtle">{name}</div>
+          {name !== assetLabel(asset.symbol) ? (
+            <div className="truncate text-2xs text-subtle">{name}</div>
+          ) : null}
         </div>
         <Sparkline data={series} up={chg >= 0} className="hidden xl:block" />
         <LivePx symbol={asset.symbol} open={asset.open} fallback={px} livePx={asset.livePx} />
       </button>
     </li>
   );
-});
+}, (a, b) =>
+  a.asset.symbol === b.asset.symbol &&
+  a.asset.livePx === b.asset.livePx &&
+  a.asset.price === b.asset.price &&
+  a.asset.open === b.asset.open &&
+  a.active === b.active &&
+  a.held === b.held &&
+  a.name === b.name,
+);
 
 function LivePx({
   symbol,
@@ -155,19 +168,23 @@ const TickerChip = memo(function TickerChip({
   active: boolean;
   onSelect: (symbol: string) => void;
 }) {
+  const t = useT();
   return (
-    <li>
+    <li className="shrink-0">
       <button
         type="button"
         data-symbol={asset.symbol}
         onClick={() => onSelect(asset.symbol)}
         className={cn(
-          "flex h-14 min-w-[6.5rem] flex-col justify-center rounded-xl px-3 text-left shadow-[var(--shadow-border)]",
+          "flex h-16 w-32 items-center gap-2 rounded-xl px-2.5 text-left shadow-[var(--shadow-border)]",
           active ? "bg-elevated" : "bg-surface",
         )}
       >
-        <span className="font-mono text-xs font-medium">{asset.symbol}</span>
-        <LiveChipPx symbol={asset.symbol} open={asset.open} fallback={asset.livePx || asset.price} livePx={asset.livePx} />
+        <TickerMark symbol={asset.symbol} className="size-8" />
+        <span className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+          <span className="truncate text-2xs font-medium tracking-wide">{assetLabel(asset.symbol)}</span>
+          <LiveChipPx symbol={asset.symbol} open={asset.open} fallback={asset.livePx || asset.price} livePx={asset.livePx} />
+        </span>
       </button>
     </li>
   );
@@ -188,8 +205,11 @@ function LiveChipPx({
   const px = mark || livePx || fallback;
   const chg = changePct(px, open);
   return (
-    <span className={`font-mono text-2xs tabular-nums ${px ? signedClass(chg) : "text-subtle"}`}>
-      {px ? `${compactPrice(px)} ${pct(chg)}` : "—"}
-    </span>
+    <>
+      <span className="truncate font-mono text-2xs tabular-nums">{px ? chipPrice(px) : "—"}</span>
+      <span className={`font-mono text-3xs tabular-nums ${px ? signedClass(chg) : "text-subtle"}`}>
+        {px ? pct(chg) : "—"}
+      </span>
+    </>
   );
 }

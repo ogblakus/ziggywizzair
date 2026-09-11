@@ -1,7 +1,7 @@
 import { AGENTS, type AgentId } from "@/lib/agents/personas";
 import { gateCouncilOrder } from "@/lib/agents/quorum";
 import { isWhyOpenedQuestion, replyLocale } from "@/lib/ai/ask-lang";
-import { isAddOn, pullbackInTrend } from "@/lib/desk/holds";
+import { isAddOn, pullbackInTrend, teamBlocks } from "@/lib/desk/holds";
 import { clipPctOf, markOf, qtyForClip } from "@/lib/desk/size";
 import type { Locale } from "@/lib/i18n/catalog";
 import { macroHint, sectorBoard, sentimentBias } from "@/lib/market/macro";
@@ -52,13 +52,39 @@ function skipLast(list: TickerSnapshot[], lastSymbol: string | null | undefined,
   return at(filtered, i);
 }
 
+function sessionLabel(name: NonNullable<TickerSnapshot["session"]>["name"], locale: Locale) {
+  if (name === "ny") return "NY";
+  if (name === "lon") return locale === "pl" ? "Londyn" : "London";
+  if (name === "tyo") return locale === "pl" ? "Tokio" : "Tokyo";
+  return "00:00 UTC";
+}
+
+function sessionTalk(t: TickerSnapshot, locale: Locale) {
+  const s = t.session;
+  if (!s) return "";
+  const who = sessionLabel(s.name, locale);
+  const pct = s.pct.toFixed(1);
+  if (s.kind === "grab-down") {
+    return L(
+      locale,
+      `On the 15m, ${who} printed a fast dump (~${pct}%) and a bounce — that looks like a liquidity grab, not a new trend.`,
+      `Na 15m przy ${who} była szybka zrzutka (ok. ${pct}%) i odbicie — to wygląda na zbieranie płynności, nie na nowy trend.`,
+    );
+  }
+  return L(
+    locale,
+    `On the 15m, ${who} spiked (~${pct}%) and sold off — liquidity grab to the upside, not a clean breakout.`,
+    `Na 15m przy ${who} był szybki strzał w górę (ok. ${pct}%) i zejście — zbieranie płynności od góry, nie czyste wybicie.`,
+  );
+}
+
 function nums(t: TickerSnapshot, locale: Locale) {
   const chg = `${t.changePct >= 0 ? "+" : ""}${t.changePct.toFixed(2)}%`;
   const sma = `${t.vsSma >= 0 ? "+" : ""}${t.vsSma.toFixed(2)}%`;
   const rvol = t.rvol != null ? `rvol ${t.rvol.toFixed(2)}` : locale === "pl" ? "brak rvol" : "no rvol";
   return locale === "pl"
-    ? `${t.symbol}: ${chg} od otwarcia, RSI ${t.rsi.toFixed(0)}, vs SMA20 ${sma}, ${rvol}`
-    : `${t.symbol}: ${chg} from the open, RSI ${t.rsi.toFixed(0)}, vs 20-SMA ${sma}, ${rvol}`;
+    ? `${t.symbol}: ${chg} od otwarcia, RSI 15m ${t.rsi.toFixed(0)}, vs SMA20 (15m) ${sma}, ${rvol}`
+    : `${t.symbol}: ${chg} from the open, RSI 15m ${t.rsi.toFixed(0)}, vs 20-SMA (15m) ${sma}, ${rvol}`;
 }
 
 function kaiLine(tk: TickerSnapshot, side: "buy" | "sell", locale: Locale) {
@@ -67,11 +93,12 @@ function kaiLine(tk: TickerSnapshot, side: "buy" | "sell", locale: Locale) {
   const wick = side === "buy" ? tk.buyWick : tk.sellWick;
   const kind = side === "buy" ? tk.buySetup : tk.sellSetup;
   const limit = side === "buy" ? tk.buyLimit : tk.sellLimit;
-  const rvol = tk.rvol != null ? `rvol ${tk.rvol.toFixed(2)}` : locale === "pl" ? "brak rvol" : "no rvol";
-  const extreme = side === "buy" ? L(locale, "the 12-bar high", "szczytu 12 świec") : L(locale, "the 12-bar low", "dołka 12 świec");
+  const tf = (side === "buy" ? tk.buyTf : tk.sellTf) ?? "15m";
+  const rvol = tk.rvol != null ? `rvol ${tk.rvol.toFixed(2)} (15m)` : locale === "pl" ? "brak rvol 15m" : "no 15m rvol";
+  const extreme = side === "buy" ? L(locale, `the 12-bar ${tf} high`, `szczytu 12 świec ${tf}`) : L(locale, `the 12-bar ${tf} low`, `dołka 12 świec ${tf}`);
   const dir = side === "buy" ? L(locale, "long", "kupno") : L(locale, "short", "sprzedaż");
   const bits: string[] = [
-    L(locale, `${tk.symbol} ${dir} on last 12×1m HL candles.`, `${tk.symbol} ${dir} — ostatnie 12 świec 1m z Hyperliquid.`),
+    L(locale, `${tk.symbol} ${dir} on ${tf} HL candles (not 1m).`, `${tk.symbol} ${dir} — świece ${tf} z Hyperliquid (nie 1m).`),
   ];
   if (kind === "chase") {
     bits.push(
@@ -111,6 +138,9 @@ function kaiLine(tk: TickerSnapshot, side: "buy" | "sell", locale: Locale) {
     );
   }
   bits.push(rvol + (limit && kind === "pullback" ? L(locale, `. Limit ${limit.toFixed(2)}.`, `. Limit ${limit.toFixed(2)}.`) : "."));
+  if (tk.session) {
+    bits.push(sessionTalk(tk, locale));
+  }
   return bits.join(" ");
 }
 
@@ -359,8 +389,8 @@ export function localCouncil(
             ? kaiLine(tk, fresh[0].side, locale)
             : L(
                 locale,
-                `${fresh[0].symbol}: 12×1m has no pullback (18–62% off the extreme) and no tagging FVG. No limit.`,
-                `${fresh[0].symbol}: 12×1m bez cofnięcia (18–62% od ekstremum) i bez FVG pod ceną. Bez limitu.`,
+                `${fresh[0].symbol}: 15m/1h/4h has no pullback (18–62% off the extreme) and no tagging FVG. No limit.`,
+                `${fresh[0].symbol}: 15m/1h/4h bez cofnięcia (18–62% od ekstremum) i bez FVG pod ceną. Bez limitu.`,
               ),
           vote: "hold" as const,
           symbol: fresh[0].symbol,
@@ -372,8 +402,8 @@ export function localCouncil(
         id: p.id,
         thesis: L(
           locale,
-          `No name this round. I read 12×1m candles (pullback 18–62% or FVG + rvol ≥ 0.55) after someone else picks the ticker.`,
-          `Nikt nie wskazał spółki. Czytam 12 świec 1m (cofnięcie 18–62% albo FVG + rvol ≥ 0,55), gdy już jest kierunek i ticker.`,
+          `No name this round. I read 15m / 1h / 4h (FVG on the highest TF that price tags, else a 15m pullback, rvol ≥ 0.55). 1m is noise.`,
+          `Nikt nie wskazał spółki. Czytam 15m / 1h / 4h (FVG na najwyższym TF, które cena testuje, albo cofnięcie 15m, rvol ≥ 0,55). 1m to szum.`,
         ),
         vote: "hold" as const,
         symbol: null,
@@ -408,12 +438,12 @@ export function localCouncil(
           ? L(
               locale,
               `Cash ${cashPct.toFixed(0)}% · open ${names}. I size 2–6% from Damian's weather. Adds only on a pullback, max two a day. Fees ≤ 5% round-trip.`,
-              `Gotówka ${cashPct.toFixed(0)}% · otwarte: ${names}. Clip 2–6% od pogody Damiana. Dokładki tylko na korekcie, max dwie dziennie. Opłaty ≤ 5% za otwarcie i zamknięcie.`,
+              `Gotówka ${cashPct.toFixed(0)}% · otwarte: ${names}. Wielkość 2–6% od pogody Damiana. Dokładki tylko na korekcie, max dwie dziennie. Opłaty ≤ 5% za otwarcie i zamknięcie.`,
             )
           : L(
               locale,
               `Cash is ${cashPct.toFixed(0)}% of equity. I size 2–6% from Damian's weather. Fees ≤ 5% round-trip.`,
-              `Gotówka to ${cashPct.toFixed(0)}% kapitału. Clip 2–6% od pogody Damiana. Opłaty ≤ 5% za otwarcie i zamknięcie.`,
+              `Gotówka to ${cashPct.toFixed(0)}% kapitału. Wielkość 2–6% od pogody Damiana. Opłaty ≤ 5% za otwarcie i zamknięcie.`,
             ),
       vote: "hold" as const,
       symbol: null,
@@ -438,7 +468,7 @@ export function localCouncil(
   let order: ProposedOrder | null = null;
   const cut = scouts.find((a) => {
     const pos = snap.book.positions.find((p) => p.symbol === a.symbol);
-    if (!pos) return false;
+    if (!pos || pos.teamLock) return false;
     return (pos.qty > 0 && a.vote === "sell") || (pos.qty < 0 && a.vote === "buy");
   });
 
@@ -467,6 +497,12 @@ export function localCouncil(
         locale,
         `We already called ${side.toUpperCase()} ${symbol}. I will not print the same ticket again.`,
         `Już zagłosowaliśmy ${side === "buy" ? "KUP" : "SPRZEDAJ"} ${symbol}. Nie składam tego samego zlecenia drugi raz.`,
+      );
+    } else if (teamBlocks(snap.book.positions, symbol)) {
+      iris.thesis = L(
+        locale,
+        `${symbol} is locked — you own this trade. I will not add or close.`,
+        `${symbol} jest zablokowane — to Twoja pozycja. Nie dokładam i nie zamykam.`,
       );
     } else if (adding && tk && !pullbackInTrend(side, tk.vsSma, tk.rsi, tk.changePct)) {
       iris.thesis = L(
@@ -522,8 +558,8 @@ export function localCouncil(
   } else if (scouts.length) {
     iris.thesis = L(
       locale,
-      `Vesper/Ash have a name, but 12×1m is not an entry yet (need pullback 18–62% or a tagging FVG, and rvol ≥ 0.55). Waiting.`,
-      `Vesper/Ash mają spółkę, ale 12×1m nie daje wejścia (potrzeba cofnięcia 18–62% albo FVG pod ceną i rvol ≥ 0,55). Czekamy.`,
+      `Vesper/Ash have a name, but 15m/1h/4h is not an entry yet (need a tagging FVG or a 15m pullback 18–62%, and rvol ≥ 0.55). Waiting.`,
+      `Vesper/Ash mają spółkę, ale 15m/1h/4h nie daje wejścia (potrzeba FVG pod ceną albo cofnięcia 15m 18–62% i rvol ≥ 0,55). Czekamy.`,
     );
   }
 
@@ -539,9 +575,9 @@ export function localCouncil(
         ? L(
             locale,
             `Limit on ${order.side.toUpperCase()} ${order.symbol}. Iris sized from Damian's weather.`,
-            `Limit ${order.side === "buy" ? "KUP" : "SPRZEDAJ"} ${order.symbol}. Iris dała clip od pogody Damiana.`,
+            `Limit ${order.side === "buy" ? "KUP" : "SPRZEDAJ"} ${order.symbol}. Iris dała wielkość od pogody Damiana.`,
           )
-        : L(locale, "No 12×1m setup this round. Stay in cash.", "Brak setupu na 12×1m. Zostajemy w gotówce.");
+        : L(locale, "No 15m/1h/4h setup this round. Stay in cash.", "Brak setupu na 15m/1h/4h. Zostajemy w gotówce.");
 
   return { mood, summary, agents, order, sentiment };
 }
@@ -568,41 +604,247 @@ const AGENT_NAME: Record<AgentId, string> = {
   iris: "Iris",
 };
 
-function plainMove(t: TickerSnapshot, locale: Locale) {
-  const chg = t.changePct;
-  if (!Number.isFinite(chg) || Math.abs(chg) < 0.2) {
-    return L(locale, `${t.symbol} is going nowhere today.`, `${t.symbol} dziś stoi w miejscu.`);
+function pnlTalk(p: number, locale: Locale) {
+  if (!Number.isFinite(p) || Math.abs(p) < 0.25) {
+    return L(locale, "basically unchanged", "praktycznie na zero");
   }
-  if (chg >= 1.2) return L(locale, `${t.symbol} is up hard from the open.`, `${t.symbol} ostro rośnie od otwarcia.`);
-  if (chg >= 0.35) return L(locale, `${t.symbol} is grinding higher.`, `${t.symbol} idzie w górę.`);
-  if (chg <= -1.2) return L(locale, `${t.symbol} is down hard from the open.`, `${t.symbol} wyraźnie spada od otwarcia.`);
-  return L(locale, `${t.symbol} is sliding.`, `${t.symbol} się zsuwa.`);
+  if (p > 0) return L(locale, `up about ${p.toFixed(1)}%`, `mniej więcej +${p.toFixed(1)}%`);
+  return L(locale, `down about ${Math.abs(p).toFixed(1)}%`, `mniej więcej −${Math.abs(p).toFixed(1)}%`);
 }
 
-function plainHeat(t: TickerSnapshot, locale: Locale) {
-  if (t.rsi >= 70) return L(locale, "It looks stretched — chasing here is a bad idea.", "Wygląda na rozgrzane — gonienie teraz nie ma sensu.");
-  if (t.rsi <= 30) return L(locale, "It looks washed out.", "Wygląda na przecenione.");
-  if (t.vsSma > 0.8) return L(locale, "It's running ahead of its recent average.", "Uciekło powyżej swojej ostatniej średniej.");
-  if (t.vsSma < -0.8) return L(locale, "It's sitting below its recent average.", "Siedzi poniżej swojej ostatniej średniej.");
-  return L(locale, "Nothing extreme on the short tape.", "Na krótkiej taśmie nic skrajnego.");
-}
-
-function plainBook(
+function holdTalk(
   pos: MarketSnapshot["book"]["positions"][number] | undefined,
   symbol: string,
   locale: Locale,
 ) {
-  if (!pos) return L(locale, `We are flat ${symbol}.`, `Nie mamy pozycji na ${symbol}.`);
-  const dir = pos.qty > 0 ? L(locale, "long", "długą") : L(locale, "short", "krótką");
-  const pnl =
-    pos.pnlPct >= 0
-      ? L(locale, `up about ${pos.pnlPct.toFixed(1)}%`, `jest na plusie ok. ${pos.pnlPct.toFixed(1)}%`)
-      : L(locale, `down about ${Math.abs(pos.pnlPct).toFixed(1)}%`, `jest na minusie ok. ${Math.abs(pos.pnlPct).toFixed(1)}%`);
+  if (!pos) return L(locale, `We don't have ${symbol} on.`, `Nie mamy otwartego ${symbol}.`);
+  const dir = pos.qty > 0 ? L(locale, "long", "długo") : L(locale, "short", "krótko");
   return L(
     locale,
-    `We are ${dir} ${symbol} and the trade is ${pnl}.`,
-    `Trzymamy ${dir} ${symbol} i ten trade ${pnl}.`,
+    `We're ${dir} ${symbol}, ${pnlTalk(pos.pnlPct, locale)}.`,
+    `Siedzimy ${dir} na ${symbol}, ${pnlTalk(pos.pnlPct, locale)}.`,
   );
+}
+
+function readName(t: TickerSnapshot, question: string, locale: Locale) {
+  const q = question.toLowerCase();
+  const chg = t.changePct;
+  const thinksDown = /spad|zjazd|zjechał|zjechal|leci|dump|drop|down|przecen|wash|runę|runel|manipul/.test(q);
+  const thinksUp = /uros|wzros|skoczył|skoczyl|rally|ripp|wybi/.test(q);
+  const sess = sessionTalk(t, locale);
+
+  let body: string;
+  if (thinksDown && t.session?.kind === "grab-down") {
+    body = sess;
+  } else if (thinksUp && t.session?.kind === "grab-up") {
+    body = sess;
+  } else if (thinksDown && (!Number.isFinite(chg) || chg > -0.35)) {
+    body = L(
+      locale,
+      `I get why ${t.symbol} looks heavy on a short chart, but from the open it has barely given anything back — this is a drift, not a washout.`,
+      `Rozumiem, czemu ${t.symbol} wygląda na zjazd na krótkim wykresie, ale od otwarcia prawie nic nie oddał. To dryf, nie przecena.`,
+    );
+  } else if (thinksUp && (!Number.isFinite(chg) || chg < 0.35)) {
+    body = L(
+      locale,
+      `${t.symbol} hasn't really expanded from the open. If it felt loud, the session print doesn't confirm a breakout yet.`,
+      `${t.symbol} od otwarcia prawie nie uciekł. Jeśli hałasuje na wykresie, sesja jeszcze nie potwierdza wybicia.`,
+    );
+  } else if (!Number.isFinite(chg) || Math.abs(chg) < 0.25) {
+    body = L(
+      locale,
+      `${t.symbol} is quiet from the open — no trend, no washout, just a tight range.`,
+      `${t.symbol} od otwarcia jest cichy: ani trendu, ani przeceny, tylko wąski zakres.`,
+    );
+  } else if (chg >= 1.2) {
+    body = L(
+      locale,
+      `${t.symbol} has pushed hard from the open. That's momentum, not a dip to fade.`,
+      `${t.symbol} ostro poszedł od otwarcia. To momentum, nie dołek do odbicia.`,
+    );
+  } else if (chg >= 0.35) {
+    body = L(
+      locale,
+      `${t.symbol} is grinding higher from the open, without looking stretched yet.`,
+      `${t.symbol} od otwarcia idzie w górę, jeszcze bez euforii.`,
+    );
+  } else if (chg <= -1.2) {
+    body = L(
+      locale,
+      `${t.symbol} is genuinely offered from the open. This is the kind of move that can be a real washout.`,
+      `${t.symbol} od otwarcia naprawdę spada. To już może być przecena, nie szum.`,
+    );
+  } else {
+    body = L(
+      locale,
+      `${t.symbol} is easing from the open, still orderly.`,
+      `${t.symbol} od otwarcia się zsuwa, ale spokojnie, bez paniki.`,
+    );
+  }
+  if (sess && body !== sess) return `${body} ${sess}`;
+  return body;
+}
+
+function ashNext(t: TickerSnapshot, locale: Locale) {
+  const stretched = t.rsi <= 32 || t.vsSma < -0.8 || t.changePct <= -1;
+  if (stretched) {
+    return L(
+      locale,
+      `This is the stretch I actually fade: one small ticket the other way, and I will not add if it keeps going against us.`,
+      `Przy takiej przecenie siadam: jedna mała noga w drugą stronę i bez dokładania, jeśli pójdzie dalej przeciwko nam.`,
+    );
+  }
+  return L(
+    locale,
+    `I'm not fading a quiet name. When a real washout shows up I'll take one small ticket — not two, and I don't average down.`,
+    `Cichej spółki nie odbijam. Jak pojawi się prawdziwa przecena, wezmę jedną małą nogę — nie dwie i nie uśredniam.`,
+  );
+}
+
+function vesperNext(t: TickerSnapshot, locale: Locale) {
+  if (t.changePct > 0.3 && t.rsi < 72) {
+    return L(
+      locale,
+      `If it keeps expanding I'll keep a small long. If it stalls, I flatten. I'm not here to fade this.`,
+      `Jeśli dalej się rozszerza, zostawiam małą długą. Jak stanie — zdejmuję. Tego nie gram w drugą stronę.`,
+    );
+  }
+  return L(
+    locale,
+    `There's no expansion to ride. I'll wait for the name to actually start moving.`,
+    `Nie ma tu momentum do jazdy. Poczekam, aż spółka naprawdę ruszy.`,
+  );
+}
+
+function kaiNext(_t: TickerSnapshot, locale: Locale) {
+  return L(
+    locale,
+    `I wouldn't chase the print. I want a pullback that actually comes to us, then a resting limit — not a market order into whatever is on the screen.`,
+    `Nie goniłbym tej ceny. Chcę cofnięcia, które naprawdę do nas dojdzie, i limitu — nie rynku w to, co widać na ekranie.`,
+  );
+}
+
+function mentionsName(snap: MarketSnapshot, question: string): TickerSnapshot | null {
+  const upper = question.toUpperCase();
+  const aliases: Record<string, string> = {
+    BITCOIN: "BTC",
+    ETHER: "ETH",
+    ETHEREUM: "ETH",
+    ZŁOTO: "GOLD",
+    ZLOTO: "GOLD",
+    SREBRO: "SILVER",
+  };
+  for (const t of snap.tickers) {
+    if (upper.includes(t.symbol)) return t;
+    if (t.name && upper.includes(t.name.toUpperCase())) return t;
+  }
+  for (const [word, sym] of Object.entries(aliases)) {
+    if (upper.includes(word)) return snap.tickers.find((t) => t.symbol === sym) ?? null;
+  }
+  return null;
+}
+
+function isDamianQuestion(q: string) {
+  return /sentyment|sentiment|sektor|dollar|dolar|vol\b|zmienn|rynek|market|krypto|crypto|bitcoin|\bbtc\b|\beth\b|kapitaliz|mcap|market.?cap|złot|zlot|srebr|gold|silver|metal|dxy|wiadomo|news|nagłów|naglów|pogod|weather|fear|greed|bull|bear/.test(
+    q,
+  );
+}
+
+function isIrisQuestion(q: string) {
+  return /iris|ryzyk|risk|cash|gotów|gotow|zamkn|close|size|wielko[sś][cć]|ile kapita|ile mam/.test(q);
+}
+
+function isKaiQuestion(q: string) {
+  return /manipul|spoof|stop.?hunt|płynno|plynno|sesj|\bny\b|londyn|tokio|liquidity|fvg|limit|setup|cofni[eę]/.test(q);
+}
+
+function capUsd(n: number | null | undefined) {
+  if (n == null || !(n > 0)) return null;
+  if (n >= 1e12) return `$${(n / 1e12).toFixed(2)}T`;
+  if (n >= 1e9) return `$${(n / 1e9).toFixed(0)}B`;
+  return `$${n.toFixed(0)}`;
+}
+
+function damianAsk(question: string, snap: MarketSnapshot, locale: Locale): string {
+  const board = sectorBoard(snap.macro, snap.tickers, locale);
+  const m = snap.macro;
+  const q = question.toLowerCase();
+  const wantsCrypto = /krypto|crypto|bitcoin|\bbtc\b|\beth\b|kapitaliz|mcap|market.?cap/.test(q);
+  const crypto = board.sectors.find((s) => s.id === "crypto");
+  const btc = snap.tickers.find((t) => t.symbol === "BTC");
+  const eth = snap.tickers.find((t) => t.symbol === "ETH");
+  if (wantsCrypto) {
+    const pct = m?.cryptoMcapPct;
+    const cap = capUsd(m?.cryptoMcap ?? null);
+    const pctStr =
+      pct == null
+        ? null
+        : `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;
+    const first = L(
+      locale,
+      [
+        cap && pctStr
+          ? `Crypto market cap is about ${cap}, ${pctStr} on the day.`
+          : pctStr
+            ? `Crypto market cap is ${pctStr} on the day.`
+            : `I don't have a clean market-cap print yet.`,
+        crypto ? crypto.why : "",
+        btc ? `BTC ${btc.changePct >= 0 ? "+" : ""}${btc.changePct.toFixed(2)}% from the open.` : "",
+        eth ? `ETH ${eth.changePct >= 0 ? "+" : ""}${eth.changePct.toFixed(2)}% from the open.` : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+      [
+        cap && pctStr
+          ? `Kapitalizacja krypto to około ${cap}, ${pctStr} na dobę.`
+          : pctStr
+            ? `Kapitalizacja krypto ${pctStr} na dobę.`
+            : `Nie mam teraz czystego odczytu kapitalizacji.`,
+        crypto ? crypto.why : "",
+        btc ? `BTC ${btc.changePct >= 0 ? "+" : ""}${btc.changePct.toFixed(2)}% od otwarcia.` : "",
+        eth ? `ETH ${eth.changePct >= 0 ? "+" : ""}${eth.changePct.toFixed(2)}% od otwarcia.` : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
+    const second = L(
+      locale,
+      `That's weather, not a ticker vote. Iris sizes from this. I don't pick names.`,
+      `To pogoda, nie wybór spółki. Iris z tego liczy wielkość. Ja nazw nie wybieram.`,
+    );
+    return `${first}\n\n${second}`;
+  }
+  const hint = macroHint(m, locale);
+  const bits = board.sectors
+    .filter((s) => s.stance !== "neutral")
+    .map((s) => {
+      const name =
+        s.id === "equities"
+          ? locale === "pl"
+            ? "akcje"
+            : "stocks"
+          : s.id === "vol"
+            ? locale === "pl"
+              ? "zmienność"
+              : "vol"
+            : s.id === "dollar"
+              ? locale === "pl"
+                ? "dolar"
+                : "dollar"
+              : s.id === "metals"
+                ? locale === "pl"
+                  ? "metale"
+                  : "metals"
+                : "crypto";
+      return `${name}: ${s.why}`;
+    })
+    .slice(0, 3);
+  return [
+    hint ? `${board.summary}. ${hint}` : board.summary,
+    [bits.join(". "), L(locale, "I don't pick names. Iris sizes from this weather.", "Spółek nie wybieram. Iris z tej pogody liczy wielkość.")]
+      .filter(Boolean)
+      .join(" "),
+  ].join("\n\n");
 }
 
 function pickFocus(snap: MarketSnapshot, question: string): TickerSnapshot {
@@ -614,19 +856,21 @@ function pickFocus(snap: MarketSnapshot, question: string): TickerSnapshot {
     const t = snap.tickers.find((x) => x.symbol === held.symbol);
     if (t) return t;
   }
-  return snap.tickers[0] ?? {
-    symbol: "SPY",
-    name: "S&P",
-    price: 0,
-    open: 0,
-    changePct: 0,
-    high: 0,
-    low: 0,
-    rsi: 50,
-    vsSma: 0,
-    livePx: null,
-    liveBps: null,
-  };
+  return (
+    snap.tickers[0] ?? {
+      symbol: "SPY",
+      name: "S&P",
+      price: 0,
+      open: 0,
+      changePct: 0,
+      high: 0,
+      low: 0,
+      rsi: 50,
+      vsSma: 0,
+      livePx: null,
+      liveBps: null,
+    }
+  );
 }
 
 export function localAsk(
@@ -636,9 +880,11 @@ export function localAsk(
   ctx?: AskContext,
 ): { speaker: AgentId; text: string } {
   const loc = replyLocale(locale, question);
-  const focus = pickFocus(snap, question);
-  const pos = snap.book.positions.find((p) => p.symbol === focus.symbol);
-  const hold = plainBook(pos, focus.symbol, loc);
+  const named = mentionsName(snap, question);
+  const focus = named ?? pickFocus(snap, question);
+  const pos = named ? snap.book.positions.find((p) => p.symbol === named.symbol) : undefined;
+  const hold = named ? holdTalk(pos, named.symbol, loc) : "";
+  const q = question.toLowerCase();
 
   if (isWhyOpenedQuestion(question)) {
     const fill = (ctx?.recentFills ?? []).find((f) => f.symbol === focus.symbol);
@@ -653,80 +899,79 @@ export function localAsk(
         loc,
         [
           voter
-            ? `${AGENT_NAME[who]} wanted ${voter.vote === "buy" ? "to buy" : "to sell"} ${focus.symbol}.`
+            ? `${AGENT_NAME[who]} wanted ${voter.vote === "buy" ? "to buy" : "to sell"} ${focus.symbol}${voter.thesis ? ` — ${voter.thesis}` : "."}`
             : `Iris put ${focus.symbol} on because the floor had a name.`,
-          voter?.thesis ? voter.thesis : "",
-          fill
-            ? `We actually got filled ${fill.side === "buy" ? "long" : "short"} around ${fill.price.toFixed(2)}.`
-            : `I don't see the fill ticket in front of me, but ${hold}`,
-          weather ? `Damian's weather at the time: ${weather}.` : "",
-          hold,
-        ]
-          .filter(Boolean)
-          .join("\n\n"),
+          [
+            fill
+              ? `We got filled ${fill.side === "buy" ? "long" : "short"} around ${fill.price.toFixed(2)}.`
+              : `I don't have the fill ticket in front of me.`,
+            weather ? `Damian's weather then: ${weather}.` : "",
+            holdTalk(snap.book.positions.find((p) => p.symbol === focus.symbol), focus.symbol, loc),
+          ]
+            .filter(Boolean)
+            .join(" "),
+        ].join("\n\n"),
         [
           voter
-            ? `${AGENT_NAME[who]} chciał${who === "vesper" ? "a" : ""} ${voter.vote === "buy" ? "kupić" : "sprzedać"} ${focus.symbol}.`
+            ? `${AGENT_NAME[who]} chciał${who === "vesper" ? "a" : ""} ${voter.vote === "buy" ? "kupić" : "sprzedać"} ${focus.symbol}${voter.thesis ? ` — ${voter.thesis}` : "."}`
             : `Iris wstawiła ${focus.symbol}, bo rada miała spółkę.`,
-          voter?.thesis ? voter.thesis : "",
-          fill
-            ? `Weszliśmy ${fill.side === "buy" ? "długo" : "krótko"} po około ${fill.price.toFixed(2)}.`
-            : `Nie widzę teraz biletu z wejścia, ale ${hold}`,
-          weather ? `Pogoda Damiana wtedy: ${weather}.` : "",
-          hold,
-        ]
-          .filter(Boolean)
-          .join("\n\n"),
+          [
+            fill
+              ? `Weszliśmy ${fill.side === "buy" ? "długo" : "krótko"} po około ${fill.price.toFixed(2)}.`
+              : `Nie mam teraz biletu z wejścia pod ręką.`,
+            weather ? `Pogoda Damiana wtedy: ${weather}.` : "",
+            holdTalk(snap.book.positions.find((p) => p.symbol === focus.symbol), focus.symbol, loc),
+          ]
+            .filter(Boolean)
+            .join(" "),
+        ].join("\n\n"),
       ),
     };
   }
 
-  const q = question.toLowerCase();
-  if (/sentyment|sentiment|sektor|dollar|dolar|vol\b|zmienn|rynek|market/.test(q)) {
-    const board = sectorBoard(snap.macro, snap.tickers, loc);
-    const bits = board.sectors
-      .filter((s) => s.stance !== "neutral")
-      .map((s) => `${s.id === "equities" ? (loc === "pl" ? "akcje" : "stocks") : s.id === "vol" ? (loc === "pl" ? "zmienność" : "vol") : s.id === "dollar" ? (loc === "pl" ? "dolar" : "dollar") : s.id === "metals" ? (loc === "pl" ? "metale" : "metals") : "crypto"}: ${s.why}`)
-      .slice(0, 4);
+  if (isDamianQuestion(q) || (!named && !isIrisQuestion(q) && !isKaiQuestion(q))) {
+    if (!(named && (isKaiQuestion(q) || isIrisQuestion(q)))) {
+      return { speaker: "damian", text: damianAsk(question, snap, loc) };
+    }
+  }
+
+  if (isKaiQuestion(q)) {
+    const sess = sessionTalk(focus, loc);
     return {
-      speaker: "damian",
-      text: [board.summary, bits.join("\n"), L(loc, "I don't pick tickers. Iris sizes from this weather.", "Ja spółek nie wybieram. Iris z tej pogody liczy clip.")].filter(Boolean).join("\n\n"),
+      speaker: "kai",
+      text: L(
+        loc,
+        [
+          sess || `${focus.symbol} has no sharp Lon/NY print on the 15m right now.`,
+          hold,
+          `I don't trade that spike. If we go, it is a limit after the grab, not into it.`,
+        ].join("\n\n"),
+        [
+          sess || `Na 15m ${focus.symbol} nie ma teraz ostrego strzału przy Londynie/NY.`,
+          hold,
+          `Tego strzału nie gonimy. Jeśli wchodzimy, to limitem po zbieraniu płynności, nie w nie.`,
+        ].join("\n\n"),
+      ),
     };
   }
-  if (/iris|ryzyk|risk|cash|gotów|zamkn|close|size|ile/.test(q)) {
+  if (isIrisQuestion(q)) {
     return {
       speaker: "iris",
       text: L(
         loc,
-        [
-          hold,
-          "Vesper hunts trend, Ash hunts extremes — they are not a vote against each other.",
-          "I clip size from Damian's weather. Kai puts the limit on last, or we wait.",
-          "A normal trade is a few hours. Only a working name may stay a few days. Two add-ons a day, only on a pullback.",
-        ].join("\n\n"),
-        [
-          hold,
-          "Vesper szuka trendu, Ash skrajności — nie głosują przeciw sobie.",
-          "Wielkość liczę od pogody Damiana. Kai na końcu stawia limit, albo czekamy.",
-          "Zwykły trade to kilka godzin. Tylko działająca noga może zostać kilka dni. Dwie dokładki dziennie, tylko na korekcie.",
-        ].join("\n\n"),
+        `${hold || L(loc, "Nothing open that I need to size.", "Nic otwartego do liczenia wielkości.")} Vesper hunts trend, Ash hunts extremes — they are not voting against each other. I size from Damian's weather; Kai puts the limit on last, or we wait.\n\nA normal trade is a few hours. Only a working name may stay a few days, and I allow two add-ons a day, only on a pullback.`,
+        `${hold || "Nic otwartego do liczenia wielkości."} Vesper szuka trendu, Ash skrajności — nie głosują przeciw sobie. Wielkość liczę od pogody Damiana; Kai na końcu stawia limit, albo czekamy.\n\nZwykły trade to kilka godzin. Tylko działająca noga może zostać kilka dni, a dokładki — max dwie dziennie i tylko na korekcie.`,
       ),
     };
   }
 
-  const speaker: AgentId = pos ? "ash" : focus.changePct > 0.3 ? "vesper" : "kai";
-  const next =
-    speaker === "kai"
-      ? L(
-          loc,
-          "I would wait for a pullback and a limit. I don't chase the print.",
-          "Poczekałbym na cofnięcie i limit. Nie gonię ceny.",
-        )
-      : speaker === "vesper"
-        ? L(loc, "If it keeps expanding, a small long is the idea. If it stalls, I'm out.", "Jeśli dalej się rozszerza, mała długa ma sens. Jak stanie — zdejmuję.")
-        : L(loc, "I only probe a washout, one clip, no averaging down.", "Sprawdzam tylko przecenę, jednym clipem, bez dokładania.");
+  const read = readName(focus, question, loc);
+  const heldPos = snap.book.positions.find((p) => p.symbol === focus.symbol);
+  const speaker: AgentId = heldPos ? "ash" : focus.changePct > 0.3 ? "vesper" : "kai";
+  const next = speaker === "kai" ? kaiNext(focus, loc) : speaker === "vesper" ? vesperNext(focus, loc) : ashNext(focus, loc);
   return {
     speaker,
-    text: [plainMove(focus, loc), plainHeat(focus, loc), hold, next].join("\n\n"),
+    text: `${read}\n\n${holdTalk(heldPos, focus.symbol, loc)} ${next}`,
   };
 }
+
