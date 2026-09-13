@@ -153,11 +153,11 @@ export function validateDamian(out: DamianOutput): DamianOutput {
 export function validateIris(out: IrisOutput, snap: MarketSnapshot, checks: IrisChecks): IrisOutput {
   const symbol = knownSymbol(snap, out.symbol);
   let decision = out.decision;
-  if (!checks.openLegLimit || !checks.teamLock || !checks.feeLimit) decision = "reject";
+  if (!checks.openLegLimit || !checks.teamLock || !checks.feeLimit || !checks.restingOrderLimit) decision = "reject";
   if (!checks.scoutScore || !checks.kaiStatus || !checks.kaiDirection || !checks.rr) {
     if (decision === "approve" || decision === "reduce") decision = checks.kaiStatus ? "wait" : "reject";
   }
-  const size = decision === "reject" || decision === "wait" ? 0 : clamp(out.risk.finalSizePct, 0, 6);
+  const size = decision === "reject" || decision === "wait" ? 0 : clamp(out.risk.finalSizePct ?? 0, 0, 6);
   return {
     ...out,
     decision,

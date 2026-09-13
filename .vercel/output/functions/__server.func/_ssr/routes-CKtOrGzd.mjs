@@ -1,23 +1,24 @@
 import { o as __toESM } from "../_runtime.mjs";
 import { i as isLot, n as UNIVERSE } from "./universe-BHNCzOwL.mjs";
-import { a as changePct, i as agentShort, n as AGENT_BY_ID, t as AGENTS } from "./holds-BpglsS1V.mjs";
-import { i as localCouncil, r as localAsk } from "./local-council-BdVu5uQG.mjs";
+import { a as changePct, i as agentShort, n as AGENT_BY_ID, t as AGENTS } from "./personas-CKVSpiDt.mjs";
 import { l as require_react_dom, u as require_react } from "../_libs/@floating-ui/react-dom+[...].mjs";
 import { _ as Navigate } from "../_libs/@tanstack/react-router+[...].mjs";
 import { s as require_jsx_runtime } from "../_libs/@radix-ui/react-collection+[...].mjs";
 import { n as createServerFn } from "./ssr.mjs";
 import { t as createSsrRpc } from "./createSsrRpc-D75-wYbG.mjs";
-import { a as sentimentBias, t as fetchLiveMacro } from "./macro-DaPt4VNL.mjs";
+import { n as fetchLiveMacro, o as sentimentBias } from "./macro-Bg8vwTHR.mjs";
+import { T as runLocalV2 } from "./local-v2-PvgmS_Qo.mjs";
 import { C as t, _ as timeAgo, a as assetName, c as compactPrice, d as money, f as pct, h as signedQty, i as assetLabel, l as fillNoteLabel, m as signedClass, o as chipPrice, p as qtyFmt, s as compactMoney, u as fillSideLabel, w as txError } from "./alert-prefs-BDQeOj_T.mjs";
-import { A as recordsFrom, C as liveProposal, D as portfolioStats, O as proposalMsLeft, S as humanEntryNote, b as explainTrade, j as reflectClosed, l as parseStop, m as PROPOSAL_TTL_MS, n as bookLooksLive, o as hlFeeUsd, p as stopSideError, w as looksLikeReflection, x as humanCloseNote } from "./engine-C1GaS4Le.mjs";
+import { A as recordsFrom, C as liveProposal, D as portfolioStats, O as proposalMsLeft, S as humanEntryNote, b as explainTrade, j as reflectClosed, l as parseStop, m as PROPOSAL_TTL_MS, n as bookLooksLive, o as hlFeeUsd, p as stopSideError, w as looksLikeReflection, x as humanCloseNote } from "./engine-BtZ74KnL.mjs";
 import { t as authMiddleware } from "./middleware-Nk1Kc5zC.mjs";
 import { a as signOut } from "./client-r2HS9zuU.mjs";
-import { n as conveneCouncil, t as askFloor } from "./council-5D0nLGSM.mjs";
+import { n as conveneCouncil, t as askFloor } from "./council-B6kDihVd.mjs";
+import { r as localAsk } from "./local-council-vBc7-AWa.mjs";
 import { t as cva } from "../_libs/class-variance-authority+clsx.mjs";
 import { _ as ChartColumn, a as Settings, b as ArrowUpRight, c as MessageSquare, d as History, g as CheckCheck, h as ChevronDown, l as Lock, m as CircleDot, n as Wallet, r as Users, s as Minus, t as X, u as LockOpen, v as Briefcase, x as ArrowDownRight, y as Bell } from "../_libs/lucide-react.mjs";
 import { n as loadProfile, t as claimUsername } from "./profile-server-RnW0amzK.mjs";
 import { n as issueRecoveryCode, o as trustThisDevice, r as passwordStatus, t as changeDeskPassword } from "./password-kIhJB4kA.mjs";
-import { a as useCurrentUser, i as getDeviceToken, n as Input, o as useCurrentUserState, r as SecretField, t as Button } from "./device-BE99QDce.mjs";
+import { a as useCurrentUser, i as getDeviceToken, n as Input, o as useCurrentUserState, r as SecretField, t as Button } from "./device-BP6aaMIH.mjs";
 import { i as newsOverlap } from "./news-key-By_bmI6f.mjs";
 import { t as fetchLiveNews } from "./news-BCja-IdZ.mjs";
 import { s as loadPerpsAccount, t as DESK_TO_PERP } from "./hyperliquid-CyQ1Swyx.mjs";
@@ -26,9 +27,9 @@ import { a as hasGateSessionMarker } from "./server-B2mxShfj.mjs";
 import { n as persist, r as create } from "../_libs/zustand.mjs";
 import { a as DialogOverlay$1, c as DialogTrigger$1, i as DialogDescription$1, n as DialogClose, o as DialogPortal$1, r as DialogContent$1, s as DialogTitle$1, t as Dialog$1 } from "../_libs/@radix-ui/react-dialog+[...].mjs";
 import { n as toast } from "../_libs/sonner.mjs";
-import { A as useLocale, C as LanguageSwitch, D as bootSplashHolding, E as TakeoffSplash, O as cn, S as APP_NAME, T as PlaneMark, _ as useMark, a as TooltipTrigger, b as useSelectedTape, c as bookEquity, d as preferServerBook, f as toDeskBook, g as useFeed, h as useDesk, i as TooltipContent, j as useT, k as markBootSplash, l as installBootQuotes, m as useAssets, n as Route, o as bindDeskStorage, p as useAppearance, r as Tooltip, s as bindTradingMode, u as liveAssets, v as useMarkedAssets, w as ModeKicker, x as useTradingMode, y as useMarks } from "./router-C6_Lgo_k.mjs";
+import { A as useLocale, C as LanguageSwitch, D as bootSplashHolding, E as TakeoffSplash, O as cn, S as APP_NAME, T as PlaneMark, _ as useMark, a as TooltipTrigger, b as useSelectedTape, c as bookEquity, d as preferServerBook, f as toDeskBook, g as useFeed, h as useDesk, i as TooltipContent, j as useT, k as markBootSplash, l as installBootQuotes, m as useAssets, n as Route, o as bindDeskStorage, p as useAppearance, r as Tooltip, s as bindTradingMode, u as liveAssets, v as useMarkedAssets, w as ModeKicker, x as useTradingMode, y as useMarks } from "./router-fKdFkJkx.mjs";
 import { n as Root2, r as Trigger, t as List } from "../_libs/radix-ui__react-tabs.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/routes-C6F_7nwi.js
+//#region node_modules/.nitro/vite/services/ssr/assets/routes-CKtOrGzd.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 var import_react_dom = /* @__PURE__ */ __toESM(require_react_dom());
@@ -2324,17 +2325,27 @@ function AgentsPane({ onConvene }) {
 		children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 			className: "flex shrink-0 flex-wrap items-center justify-between gap-2 pb-3",
 			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-				className: "flex items-baseline gap-2",
-				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
-					className: "text-2xs font-medium tracking-wide text-subtle uppercase",
-					children: t("floor.council")
-				}), lastCouncil ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Badge, {
-					variant: lastCouncil.mood === "risk-off" ? "down" : lastCouncil.mood === "risk-on" ? "up" : "default",
-					children: t(`mood.${lastCouncil.mood}`)
-				}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-					className: "text-2xs text-subtle",
-					children: t("floor.idle")
-				})]
+				className: "flex min-w-0 flex-wrap items-baseline gap-2",
+				children: [
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
+						className: "text-2xs font-medium tracking-wide text-subtle uppercase",
+						children: t("floor.council")
+					}),
+					lastCouncil?.status?.mode === "online" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Badge, {
+						variant: "up",
+						children: t("floor.aiOnline")
+					}) : lastCouncil?.status?.mode === "degraded" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Badge, {
+						variant: "default",
+						children: t("floor.aiDegraded")
+					}) : null,
+					lastCouncil ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Badge, {
+						variant: lastCouncil.mood === "risk-off" ? "down" : lastCouncil.mood === "risk-on" ? "up" : "default",
+						children: t(`mood.${lastCouncil.mood}`)
+					}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+						className: "text-2xs text-subtle",
+						children: t("floor.idle")
+					})
+				]
 			}), onConvene ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FloorControls, {
 				onConvene,
 				className: "flex lg:hidden"
@@ -2342,6 +2353,17 @@ function AgentsPane({ onConvene }) {
 		}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 			className: "min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-1",
 			children: [
+				lastCouncil?.agreement?.level === "low" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "rounded-lg bg-surface px-3 py-2 text-xs text-muted shadow-[var(--shadow-border)]",
+					children: [
+						t("floor.disagree"),
+						lastCouncil.finalScore != null ? ` · ${t("floor.score", { n: lastCouncil.finalScore.toFixed(0) })}` : "",
+						lastCouncil.band ? ` · ${t(`floor.band.${lastCouncil.band}`)}` : ""
+					]
+				}) : lastCouncil?.finalScore != null ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+					className: "px-0.5 text-2xs text-subtle",
+					children: [t("floor.score", { n: lastCouncil.finalScore.toFixed(0) }), lastCouncil.band ? ` · ${t(`floor.band.${lastCouncil.band}`)}` : ""]
+				}) : null,
 				/* @__PURE__ */ (0, import_jsx_runtime.jsx)(DamianCard, {}),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
 					className: "px-0.5 text-2xs font-medium tracking-wide text-subtle uppercase",
@@ -2369,13 +2391,17 @@ function AgentsPane({ onConvene }) {
 											children: persona.name
 										}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 											className: "text-xs text-subtle",
-											children: [t(`role.${persona.id}`), rec ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-												className: "ml-1.5 text-muted",
-												children: [rec.closed >= 2 ? t("floor.hits", {
-													wins: rec.wins,
-													closed: rec.closed
-												}) : t("floor.hitsSoon"), !rec.trusted ? ` · ${t("floor.cold")}` : ""]
-											}) : null]
+											children: [
+												t(`role.${persona.id}`),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)(SourceChip, { id: persona.id }),
+												rec ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+													className: "ml-1.5 text-muted",
+													children: [rec.closed >= 2 ? t("floor.hits", {
+														wins: rec.wins,
+														closed: rec.closed
+													}) : t("floor.hitsSoon"), !rec.trusted ? ` · ${t("floor.cold")}` : ""]
+												}) : null
+											]
 										})] }), speech ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(VoteChip, {
 											vote: speech.vote,
 											symbol: speech.symbol
@@ -2407,9 +2433,9 @@ function AgentsPane({ onConvene }) {
 									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 										className: "text-sm font-medium",
 										children: persona.name
-									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 										className: "text-xs text-subtle",
-										children: t("role.iris")
+										children: [t("role.iris"), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SourceChip, { id: "iris" })]
 									})] }), speech ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(VoteChip, {
 										vote: speech.vote,
 										symbol: speech.symbol
@@ -2670,9 +2696,9 @@ function DamianCard() {
 						className: "text-sm font-medium",
 						children: "Damian Kaczmarski"
 					}),
-					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 						className: "text-xs text-subtle",
-						children: t("floor.sentiment")
+						children: [t("floor.sentiment"), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SourceChip, { id: "damian" })]
 					}),
 					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
 						className: cn("mt-1.5 text-sm leading-relaxed text-muted", reading && "shimmer-text"),
@@ -2756,6 +2782,16 @@ function DamianCard() {
 				]
 			})]
 		})
+	});
+}
+function SourceChip({ id }) {
+	const lastCouncil = useDesk((s) => s.lastCouncil);
+	const t = useT();
+	const src = lastCouncil?.status?.sources?.[id];
+	if (!src || src === "llm") return null;
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+		className: "ml-1.5 font-mono text-2xs uppercase tracking-wide text-subtle",
+		children: src === "rules" ? t("floor.sourceRules") : t("floor.sourceLocal")
 	});
 }
 function VoteChip({ vote, symbol }) {
@@ -5276,26 +5312,30 @@ function DeskApp({ boot }) {
 		setConvening(true);
 		for (const a of AGENTS) setAgentStatus(a.id, "reading");
 		const snap = snapshot();
-		const last = useDesk.getState().lastCouncil;
 		const selected = useDesk.getState().selected;
 		let result;
 		let source = "ai";
-		const lastDamian = last?.agents.find((a) => a.id === "damian")?.thesis;
-		const seenNews = [...useDesk.getState().tape.filter((row) => row.kind === "news" || row.agentId === "damian").map((row) => row.text), ...lastDamian ? [lastDamian] : []];
 		try {
 			const res = await conveneCouncil({ data: {
 				snap,
-				last,
 				selected,
 				locale
 			} });
 			if (res.ok) result = res.result;
 			else {
-				result = localCouncil(snap, last, locale, seenNews);
+				result = runLocalV2({
+					snap,
+					selected,
+					locale
+				});
 				source = "local";
 			}
 		} catch {
-			result = localCouncil(snap, last, locale, seenNews);
+			result = runLocalV2({
+				snap,
+				selected,
+				locale
+			});
 			source = "local";
 		}
 		try {

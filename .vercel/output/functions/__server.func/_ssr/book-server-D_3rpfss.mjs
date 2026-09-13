@@ -1,14 +1,14 @@
 import { n as createServerFn } from "./ssr.mjs";
 import { t as authMiddleware } from "./middleware-Nk1Kc5zC.mjs";
 import { t as createServerRpc } from "./createServerRpc-CN-evIEF.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/book-server-DaD4nFQV.js
+//#region node_modules/.nitro/vite/services/ssr/assets/book-server-D_3rpfss.js
 var loadDeskBook_createServerFn_handler = createServerRpc({
 	id: "fe8bb7b7a1cf2d937bc09dfe6254c5720783c76a41ac7b95d1367a7c2a461951",
 	name: "loadDeskBook",
 	filename: "src/lib/desk/book-server.ts"
 }, (opts) => loadDeskBook.__executeServer(opts));
 var loadDeskBook = createServerFn({ method: "GET" }).middleware([authMiddleware]).handler(loadDeskBook_createServerFn_handler, async ({ context }) => {
-	const { ensureDeskLoop, loadBook } = await import("./persist.server-Y-5m4bn4.mjs");
+	const { ensureDeskLoop, loadBook } = await import("./persist.server-C4aHVGg6.mjs");
 	ensureDeskLoop();
 	return {
 		book: await loadBook(context.userId),
@@ -21,7 +21,7 @@ var saveDeskBook_createServerFn_handler = createServerRpc({
 	filename: "src/lib/desk/book-server.ts"
 }, (opts) => saveDeskBook.__executeServer(opts));
 var saveDeskBook = createServerFn({ method: "POST" }).middleware([authMiddleware]).validator((input) => input).handler(saveDeskBook_createServerFn_handler, async ({ context, data }) => {
-	const { saveFromClient, ensureDeskLoop } = await import("./persist.server-Y-5m4bn4.mjs");
+	const { saveFromClient, ensureDeskLoop } = await import("./persist.server-C4aHVGg6.mjs");
 	ensureDeskLoop();
 	const { book, accepted } = await saveFromClient(context.userId, data);
 	return {
@@ -37,7 +37,7 @@ var leaveDeskBook_createServerFn_handler = createServerRpc({
 	filename: "src/lib/desk/book-server.ts"
 }, (opts) => leaveDeskBook.__executeServer(opts));
 var leaveDeskBook = createServerFn({ method: "POST" }).middleware([authMiddleware]).handler(leaveDeskBook_createServerFn_handler, async ({ context }) => {
-	const { loadBook, persistBook, ensureDeskLoop, tickDesk } = await import("./persist.server-Y-5m4bn4.mjs");
+	const { loadBook, persistBook, ensureDeskLoop, tickDesk } = await import("./persist.server-C4aHVGg6.mjs");
 	ensureDeskLoop();
 	const current = await loadBook(context.userId);
 	const saved = await persistBook(context.userId, current, { away: true });

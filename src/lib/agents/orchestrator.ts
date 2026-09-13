@@ -66,7 +66,7 @@ export async function runOrchestrator(input: {
     }
   }
 
-  const checks = applyRestingLimitGate(irisChecks(snap, decision, kai.primary), snap, kai.primary, decision.cut);
+  const checks = applyRestingLimitGate(irisChecks(snap, decision, kai.primary), snap, kai.primary, decision);
   const iris = await runIris({ snap, locale, decision, checks, vesper, ash, kai, damian });
   const result = validateAndFinalize({ snap, locale, vesper, ash, kai, damian, iris, decision });
   return { result, vesper, ash, kai, damian, iris, decision };

@@ -1,14 +1,14 @@
 import { o as __toESM, r as __exportAll } from "../_runtime.mjs";
 import { i as isLot, n as UNIVERSE } from "./universe-BHNCzOwL.mjs";
-import { a as changePct, c as isReduce, g as withTeamLocks, h as viewOf, l as promisingHold, m as teamBlocks, o as holdExpired, p as stampOpened, r as addCountToday, s as isAddOn, t as AGENTS } from "./holds-BpglsS1V.mjs";
+import { a as changePct, c as isReduce, f as stampOpened, h as withTeamLocks, l as promisingHold, m as viewOf, o as holdExpired, p as teamBlocks, r as addCountToday, s as isAddOn, t as AGENTS } from "./personas-CKVSpiDt.mjs";
 import { u as require_react } from "../_libs/@floating-ui/react-dom+[...].mjs";
 import { f as createRouter, g as createRootRoute, h as createFileRoute, l as Scripts, m as lazyRouteComponent, p as Outlet, u as HeadContent, v as useRouter } from "../_libs/@tanstack/react-router+[...].mjs";
 import { s as require_jsx_runtime } from "../_libs/@radix-ui/react-collection+[...].mjs";
-import { o as withEquityPct } from "./macro-DaPt4VNL.mjs";
+import { s as withEquityPct } from "./macro-Bg8vwTHR.mjs";
 import { C as t, S as subscribeLocale, b as hydrateLocale, g as tapeFillText, r as normalizeAlertPrefs, t as DEFAULT_ALERT_PREFS, v as LOCALES, x as setLocale, y as getLocale } from "./alert-prefs-BDQeOj_T.mjs";
-import { A as recordsFrom, C as liveProposal, E as openCall, M as rollAnchors, N as stampProposal, T as markOpenCalls, _ as compactScorecard, a as hitStop, c as notionalOk, d as preferBook, f as scrubGhostAutopilot, g as closedFromFill, h as closeCallsFor, i as emptyBook, k as proposerFrom, o as hlFeeUsd, s as idleAgents, t as applyFill, v as decorateClosed, y as equityOf } from "./engine-C1GaS4Le.mjs";
-import { t as analysisSnapshot } from "./setup-Dx2LqFQi.mjs";
-import { $ as union, J as number, K as literal, Q as string, Y as object } from "../_libs/@better-auth/core+[...].mjs";
+import { A as recordsFrom, C as liveProposal, E as openCall, M as rollAnchors, N as stampProposal, T as markOpenCalls, _ as compactScorecard, a as hitStop, c as notionalOk, d as preferBook, f as scrubGhostAutopilot, g as closedFromFill, h as closeCallsFor, i as emptyBook, k as proposerFrom, o as hlFeeUsd, s as idleAgents, t as applyFill, v as decorateClosed, y as equityOf } from "./engine-BtZ74KnL.mjs";
+import { t as analysisSnapshot } from "./setup-BM_F3gia.mjs";
+import { $t as union, Jt as number, Kt as literal, Qt as string, Yt as object } from "../_libs/@better-auth/core+[...].mjs";
 import { n as clsx } from "../_libs/class-variance-authority+clsx.mjs";
 import { t as twMerge } from "../_libs/tailwind-merge.mjs";
 import { i as TriangleAlert, o as Plane } from "../_libs/lucide-react.mjs";
@@ -17,7 +17,7 @@ import { t as auth } from "./server-B2mxShfj.mjs";
 import { n as persist, r as create, t as createJSONStorage } from "../_libs/zustand.mjs";
 import { a as Trigger, i as Root3, n as Portal, r as Provider, t as Content2 } from "../_libs/@radix-ui/react-tooltip+[...].mjs";
 import { t as Toaster } from "../_libs/sonner.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/brand-DRZ3PoR7.js
+//#region node_modules/.nitro/vite/services/ssr/assets/brand-B-8fmmDH.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 function cn(...inputs) {
@@ -133,7 +133,7 @@ function TakeoffSplash({ overlay, caption, kind = "takeoff", mode, cycle }) {
 	});
 }
 //#endregion
-//#region node_modules/.nitro/vite/services/ssr/assets/routes-CjFCPsMZ.js
+//#region node_modules/.nitro/vite/services/ssr/assets/routes-BYZqNxXe.js
 var KEY = "quorum-appearance";
 function readAppearance() {
 	if (typeof window === "undefined") return "dark";
@@ -1170,7 +1170,7 @@ function TooltipContent({ className, sideOffset = 6, ...props }) {
 		...props
 	}) });
 }
-var $$splitComponentImporter$1 = () => import("./routes-C6F_7nwi.mjs");
+var $$splitComponentImporter$1 = () => import("./routes-CKtOrGzd.mjs");
 var Route$3 = createFileRoute("/")({
 	loader: () => ({
 		ok: false,
@@ -1181,8 +1181,8 @@ var Route$3 = createFileRoute("/")({
 	component: lazyRouteComponent($$splitComponentImporter$1, "component")
 });
 //#endregion
-//#region node_modules/.nitro/vite/services/ssr/assets/router-C6_Lgo_k.js
-var router_C6_Lgo_k_exports = /* @__PURE__ */ __exportAll({ getRouter: () => getRouter });
+//#region node_modules/.nitro/vite/services/ssr/assets/router-fKdFkJkx.js
+var router_fKdFkJkx_exports = /* @__PURE__ */ __exportAll({ getRouter: () => getRouter });
 var FALLBACK_MESSAGE = "An unexpected error occurred. Try reloading the page.";
 function errorMessage(error) {
 	if (error instanceof Error && error.message) return error.message;
@@ -1593,7 +1593,7 @@ function ThemedToaster() {
 		toastOptions: { className: "bg-elevated text-fg shadow-[var(--shadow-border)]" }
 	});
 }
-var $$splitComponentImporter = () => import("./login-BwDUZ0dX.mjs");
+var $$splitComponentImporter = () => import("./login-C9G-vXOF.mjs");
 var Route$1 = createFileRoute("/login")({ component: lazyRouteComponent($$splitComponentImporter, "component") });
 var Route = createFileRoute("/api/auth/$")({ server: { handlers: {
 	GET: ({ request }) => auth.handler(request),
@@ -1624,4 +1624,4 @@ function getRouter() {
 	});
 }
 //#endregion
-export { useLocale as A, LanguageSwitch as C, bootSplashHolding as D, TakeoffSplash as E, cn as O, APP_NAME as S, PlaneMark as T, useMark as _, TooltipTrigger as a, useSelectedTape as b, bookEquity as c, preferServerBook as d, toDeskBook as f, useFeed as g, getRouter, useDesk as h, TooltipContent as i, useT as j, markBootSplash as k, installBootQuotes as l, useAssets as m, Route$3 as n, bindDeskStorage as o, useAppearance as p, Tooltip as r, bindTradingMode as s, router_C6_Lgo_k_exports as t, liveAssets as u, useMarkedAssets as v, ModeKicker as w, useTradingMode as x, useMarks as y };
+export { useLocale as A, LanguageSwitch as C, bootSplashHolding as D, TakeoffSplash as E, cn as O, APP_NAME as S, PlaneMark as T, useMark as _, TooltipTrigger as a, useSelectedTape as b, bookEquity as c, preferServerBook as d, toDeskBook as f, useFeed as g, getRouter, useDesk as h, TooltipContent as i, useT as j, markBootSplash as k, installBootQuotes as l, useAssets as m, Route$3 as n, bindDeskStorage as o, useAppearance as p, Tooltip as r, bindTradingMode as s, router_fKdFkJkx_exports as t, liveAssets as u, useMarkedAssets as v, ModeKicker as w, useTradingMode as x, useMarks as y };

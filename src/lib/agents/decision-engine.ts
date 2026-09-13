@@ -35,6 +35,27 @@ function kaiOn(kai: KaiOutput, validated: KaiSetup | null, symbol: string, side:
   );
 }
 
+function isFlatteningSide(
+  pos: { qty: number } | undefined,
+  side: Side | null | undefined,
+): boolean {
+  return Boolean(
+    pos && side && Math.abs(pos.qty) > 1e-8 && ((pos.qty > 0 && side === "sell") || (pos.qty < 0 && side === "buy")),
+  );
+}
+
+/** True when a working/resting limit must block a second non-cut, non-flattening ticket. */
+export function hasBlockingRestingLimit(
+  snap: MarketSnapshot,
+  decision: { cut: boolean; symbol: string | null; side: Side | null },
+): boolean {
+  if (!snap.book.working) return false;
+  if (decision.cut) return false;
+  const pos = decision.symbol ? snap.book.positions.find((p) => p.symbol === decision.symbol) : undefined;
+  if (isFlatteningSide(pos, decision.side)) return false;
+  return true;
+}
+
 function portfolioOk(snap: MarketSnapshot, symbol: string, side: Side, cut: boolean): { ok: boolean; reasons: string[] } {
   const reasons: string[] = [];
   const pos = snap.book.positions.find((p) => p.symbol === symbol);
@@ -45,9 +66,7 @@ function portfolioOk(snap: MarketSnapshot, symbol: string, side: Side, cut: bool
   const openCount = snap.book.positions.filter((p) => Math.abs(p.qty) > 1e-8 && !p.teamLock).length;
   const adding = Boolean(pos && Math.abs(pos.qty) > 1e-8 && ((pos.qty > 0 && side === "buy") || (pos.qty < 0 && side === "sell")));
   if (!cut && !adding && openCount >= MAX_OPEN_LEGS) reasons.push("openLegs");
-  if (!cut && snap.book.working && openCount >= 0) {
-    /* resting limit checked separately */
-  }
+  if (!cut && hasBlockingRestingLimit(snap, { cut, symbol, side })) reasons.push("restingLimit");
   const cashPct = (100 * snap.book.cash) / Math.max(snap.book.equity, 1);
   if (!cut && (snap.book.dayPnlPct < -2.4 || cashPct < 18)) reasons.push("drawdown");
   return { ok: reasons.length === 0, reasons };
@@ -239,14 +258,11 @@ export function decisionEngine(input: {
   return best;
 }
 
-export function irisChecks(snap: MarketSnapshot, decision: DecisionDraft, kai: KaiSetup | null): IrisChecks {
+export function irisChecks(snap: MarketSnapshot, decision: DecisionDraft, _kai: KaiSetup | null): IrisChecks {
   const symbol = decision.symbol;
   const openCount = snap.book.positions.filter((p) => Math.abs(p.qty) > 1e-8 && !p.teamLock).length;
   const pos = symbol ? snap.book.positions.find((p) => p.symbol === symbol) : undefined;
-  const flattening = Boolean(
-    pos && decision.side && Math.abs(pos.qty) > 1e-8 && ((pos.qty > 0 && decision.side === "sell") || (pos.qty < 0 && decision.side === "buy")),
-  );
-  const working = Boolean(snap.book.working);
+  const flattening = isFlatteningSide(pos, decision.side);
   const tk = symbol ? snap.tickers.find((t) => t.symbol === symbol) : undefined;
   const rvol = tk?.rvol ?? 1;
   const adding = Boolean(
@@ -254,7 +270,7 @@ export function irisChecks(snap: MarketSnapshot, decision: DecisionDraft, kai: K
   );
   return emptyChecks({
     openLegLimit: decision.cut || flattening || adding || openCount < HARD.MAX_OPEN_LEGS,
-    restingOrderLimit: decision.cut || flattening || !working || (kai?.status === "ready" && !working),
+    restingOrderLimit: !hasBlockingRestingLimit(snap, decision),
     feeLimit: true,
     teamLock: !(symbol && teamBlocks(snap.book.positions, symbol)),
     liquidity: rvol >= 0.55 || decision.cut,
@@ -266,12 +282,13 @@ export function irisChecks(snap: MarketSnapshot, decision: DecisionDraft, kai: K
   });
 }
 
-export function applyRestingLimitGate(checks: IrisChecks, snap: MarketSnapshot, kai: KaiSetup | null, cut: boolean): IrisChecks {
-  if (cut) return checks;
-  if (snap.book.working && kai?.status !== "ready") {
-    return { ...checks, restingOrderLimit: false };
-  }
-  return checks;
+export function applyRestingLimitGate(
+  checks: IrisChecks,
+  snap: MarketSnapshot,
+  _kai: KaiSetup | null,
+  decision: { cut: boolean; symbol: string | null; side: Side | null },
+): IrisChecks {
+  return { ...checks, restingOrderLimit: !hasBlockingRestingLimit(snap, decision) };
 }
 
 export { bandOf, disagreement };

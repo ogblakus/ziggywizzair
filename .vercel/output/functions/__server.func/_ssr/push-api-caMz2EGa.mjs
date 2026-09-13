@@ -1,14 +1,14 @@
 import { n as createServerFn } from "./ssr.mjs";
 import { t as authMiddleware } from "./middleware-Nk1Kc5zC.mjs";
 import { t as createServerRpc } from "./createServerRpc-CN-evIEF.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/push-api-CH4VDw15.js
+//#region node_modules/.nitro/vite/services/ssr/assets/push-api-caMz2EGa.js
 var getPushPublicKey_createServerFn_handler = createServerRpc({
 	id: "95fcd8f79dd8754227ad02b43e9237b62a286d94d18c2bbc4c2d56acaaa19276",
 	name: "getPushPublicKey",
 	filename: "src/lib/desk/push-api.ts"
 }, (opts) => getPushPublicKey.__executeServer(opts));
 var getPushPublicKey = createServerFn({ method: "GET" }).handler(getPushPublicKey_createServerFn_handler, async () => {
-	const { getVapidPublicKey } = await import("./push.server-BWkb1GjS.mjs");
+	const { getVapidPublicKey } = await import("./push.server-XSfQdnPF.mjs");
 	return { publicKey: await getVapidPublicKey() };
 });
 var savePushSubscription_createServerFn_handler = createServerRpc({
@@ -17,7 +17,7 @@ var savePushSubscription_createServerFn_handler = createServerRpc({
 	filename: "src/lib/desk/push-api.ts"
 }, (opts) => savePushSubscription.__executeServer(opts));
 var savePushSubscription = createServerFn({ method: "POST" }).middleware([authMiddleware]).validator((input) => input).handler(savePushSubscription_createServerFn_handler, async ({ context, data }) => {
-	const { saveSubscription } = await import("./push.server-BWkb1GjS.mjs");
+	const { saveSubscription } = await import("./push.server-XSfQdnPF.mjs");
 	return saveSubscription({
 		...data,
 		userId: context.userId
@@ -29,7 +29,7 @@ var dropPushSubscription_createServerFn_handler = createServerRpc({
 	filename: "src/lib/desk/push-api.ts"
 }, (opts) => dropPushSubscription.__executeServer(opts));
 var dropPushSubscription = createServerFn({ method: "POST" }).middleware([authMiddleware]).validator((input) => input).handler(dropPushSubscription_createServerFn_handler, async ({ context, data }) => {
-	const { dropSubscription } = await import("./push.server-BWkb1GjS.mjs");
+	const { dropSubscription } = await import("./push.server-XSfQdnPF.mjs");
 	await dropSubscription(data.endpoint, context.userId);
 	return { ok: true };
 });

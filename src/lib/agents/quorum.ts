@@ -1,5 +1,6 @@
 import type { CouncilResult, ProposedOrder } from "@/lib/types";
 import type { MarketSnapshot } from "@/lib/types";
+import { hasBlockingRestingLimit } from "@/lib/agents/decision-engine";
 
 export function scoutVotes(agents: CouncilResult["agents"]) {
   return agents.filter((a) => (a.id === "vesper" || a.id === "ash") && a.vote !== "hold" && a.symbol);
@@ -36,6 +37,7 @@ export function gateCouncilOrder(
   if (open && pos.teamLock) return null;
   const reducing =
     open && ((pos.qty > 0 && order.side === "sell") || (pos.qty < 0 && order.side === "buy"));
+  if (hasBlockingRestingLimit(snap, { cut: false, symbol: order.symbol, side: order.side })) return null;
   if (reducing) return scouts.length >= 1 || kaiOk ? order : null;
   return scouts.length >= 1 && kaiOk ? order : null;
 }

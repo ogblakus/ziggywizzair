@@ -1,45 +1,4 @@
-//#region node_modules/.nitro/vite/services/ssr/assets/holds-BpglsS1V.js
-var AGENTS = [
-	{
-		id: "vesper",
-		name: "Vesper",
-		role: "Momentum",
-		mandate: "Rank 1–3 names on 15m expansion. Soft score, not a hard AND.",
-		mark: "V"
-	},
-	{
-		id: "ash",
-		name: "Ash",
-		role: "Mean reversion",
-		mandate: "Rank 1–3 fades on 15m extremes. Soft score.",
-		mark: "A"
-	},
-	{
-		id: "kai",
-		name: "Kai",
-		role: "Setup",
-		mandate: "15m/1h/4h: ready limit, wait-limit, or veto chase/thin. Does not veto direction.",
-		mark: "K"
-	},
-	{
-		id: "damian",
-		name: "Damian Kaczmarski",
-		role: "Sentiment",
-		mandate: "Sector bias only — stocks, crypto, metals, dollar, vol. Daily crypto market cap. No RSI, no ticker vote.",
-		mark: "D"
-	},
-	{
-		id: "iris",
-		name: "Iris",
-		role: "Risk chair",
-		mandate: "Sizes 2–6% from Damian's weather. Two legs + one wait-limit. Fees ≤ 5% round-trip.",
-		mark: "I"
-	}
-];
-var AGENT_BY_ID = Object.fromEntries(AGENTS.map((a) => [a.id, a]));
-function agentShort(id) {
-	return AGENT_BY_ID[id].name.split(" ")[0] ?? AGENT_BY_ID[id].name;
-}
+//#region node_modules/.nitro/vite/services/ssr/assets/personas-CKVSpiDt.js
 function sma(series, n) {
 	if (series.length === 0) return 0;
 	const slice = series.slice(-n);
@@ -143,10 +102,6 @@ function holdExpired(pos, now, price, vsSma, dayChg) {
 	if (promisingHold(pos, price, vsSma, dayChg)) return age >= PROMISING_HOLD_MS;
 	return age >= SESSION_HOLD_MS;
 }
-function pullbackInTrend(side, vsSma, rsi, dayChg) {
-	if (side === "buy") return vsSma > .05 && rsi >= 38 && rsi <= 55 && dayChg > -.5;
-	return vsSma < -.05 && rsi >= 45 && rsi <= 62 && dayChg < .5;
-}
 function viewOf(asset) {
 	if (!asset || !(asset.price > 0)) return null;
 	const px = asset.livePx && asset.livePx > 0 ? asset.livePx : asset.price;
@@ -162,5 +117,46 @@ function sma20(series) {
 	const slice = series.slice(-20);
 	return slice.reduce((s, b) => s + b.px, 0) / slice.length;
 }
+var AGENTS = [
+	{
+		id: "vesper",
+		name: "Vesper",
+		role: "Momentum",
+		mandate: "Independent momentum specialist. 15m expansion score. Does not see the others.",
+		mark: "V"
+	},
+	{
+		id: "ash",
+		name: "Ash",
+		role: "Mean reversion",
+		mandate: "Independent mean-reversion specialist. HOLD is valid. Does not oppose Vesper.",
+		mark: "A"
+	},
+	{
+		id: "kai",
+		name: "Kai",
+		role: "Setup",
+		mandate: "Entry quality only. Ready / wait / blocked. Never flips direction.",
+		mark: "K"
+	},
+	{
+		id: "damian",
+		name: "Damian Kaczmarski",
+		role: "Sentiment",
+		mandate: "Macro regime only. Never votes a ticker. Headwind, not a veto.",
+		mark: "D"
+	},
+	{
+		id: "iris",
+		name: "Iris",
+		role: "Risk chair",
+		mandate: "Risk control: APPROVE / REDUCE / WAIT / REJECT. Does not invent direction.",
+		mark: "I"
+	}
+];
+var AGENT_BY_ID = Object.fromEntries(AGENTS.map((a) => [a.id, a]));
+function agentShort(id) {
+	return AGENT_BY_ID[id].name.split(" ")[0] ?? AGENT_BY_ID[id].name;
+}
 //#endregion
-export { changePct as a, isReduce as c, rsi as d, sma as f, withTeamLocks as g, viewOf as h, agentShort as i, promisingHold as l, teamBlocks as m, AGENT_BY_ID as n, holdExpired as o, stampOpened as p, addCountToday as r, isAddOn as s, AGENTS as t, pullbackInTrend as u };
+export { changePct as a, isReduce as c, sma as d, stampOpened as f, withTeamLocks as h, agentShort as i, promisingHold as l, viewOf as m, AGENT_BY_ID as n, holdExpired as o, teamBlocks as p, addCountToday as r, isAddOn as s, AGENTS as t, rsi as u };

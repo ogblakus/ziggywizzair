@@ -2,14 +2,15 @@ import { r as __exportAll } from "../_runtime.mjs";
 import { t as __exportAll$1 } from "./rolldown-runtime-BBjsoOtd.mjs";
 import { n as createServerFn } from "./ssr.mjs";
 import { t as createSsrRpc } from "./createSsrRpc-D75-wYbG.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/macro-DaPt4VNL.js
-var macro_DaPt4VNL_exports = /* @__PURE__ */ __exportAll({
-	a: () => sentimentBias,
-	i: () => sectorBoard,
-	n: () => macroHint,
-	o: () => withEquityPct,
-	r: () => macro_exports,
-	t: () => fetchLiveMacro
+//#region node_modules/.nitro/vite/services/ssr/assets/macro-Bg8vwTHR.js
+var macro_Bg8vwTHR_exports = /* @__PURE__ */ __exportAll({
+	a: () => sectorBoard,
+	i: () => macro_exports,
+	n: () => fetchLiveMacro,
+	o: () => sentimentBias,
+	r: () => macroHint,
+	s: () => withEquityPct,
+	t: () => classifyMacro
 });
 var macro_exports = /* @__PURE__ */ __exportAll$1({
 	classifyMacro: () => classifyMacro,
@@ -280,4 +281,4 @@ async function loadLiveMacro() {
 }
 var fetchLiveMacro = createServerFn({ method: "POST" }).handler(createSsrRpc("a7be02895f47f640d4141f35b0a9984e080e3df81e54a1a9215b88264d8ffb12"));
 //#endregion
-export { sentimentBias as a, sectorBoard as i, macroHint as n, withEquityPct as o, macro_DaPt4VNL_exports as r, fetchLiveMacro as t };
+export { sectorBoard as a, macro_Bg8vwTHR_exports as i, fetchLiveMacro as n, sentimentBias as o, macroHint as r, withEquityPct as s, classifyMacro as t };

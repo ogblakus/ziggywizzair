@@ -1,5 +1,6 @@
 import { AGENTS, type AgentId } from "@/lib/agents/personas";
 import { DECISION_ENGINE_VERSION } from "@/lib/agents/core/versions";
+import { HARD } from "@/lib/agents/core/scoring";
 import type {
   AgentSource,
   AshOutput,
@@ -10,7 +11,9 @@ import type {
   Locale,
   VesperOutput,
 } from "@/lib/agents/core/types";
+import { hasBlockingRestingLimit } from "@/lib/agents/decision-engine";
 import { gateCouncilOrder } from "@/lib/agents/quorum";
+import { teamBlocks } from "@/lib/desk/holds";
 import { clipPctOf, markOf, qtyForClip } from "@/lib/desk/size";
 import type { CouncilResult, MarketSnapshot, ProposedOrder, SentimentReport } from "@/lib/types";
 
@@ -80,7 +83,7 @@ function mapAgents(
       vote: iris.decision === "approve" || iris.decision === "reduce" ? (iris.side ?? "hold") : "hold",
       symbol: iris.symbol,
       conviction: iris.decision === "approve" ? 0.72 : iris.decision === "reduce" ? 0.58 : 0.45,
-      sizePct: iris.risk.finalSizePct,
+      sizePct: iris.risk.finalSizePct ?? 0,
     };
   });
 }
@@ -100,6 +103,15 @@ function moodOf(damian: DamianOutput, iris: IrisOutput, order: ProposedOrder | n
   return "cautious";
 }
 
+function isFlattening(
+  pos: { qty: number } | undefined,
+  side: "buy" | "sell" | null,
+): boolean {
+  return Boolean(
+    pos && side && Math.abs(pos.qty) > 1e-8 && ((pos.qty > 0 && side === "sell") || (pos.qty < 0 && side === "buy")),
+  );
+}
+
 function buildOrder(
   snap: MarketSnapshot,
   decision: DecisionDraft,
@@ -111,7 +123,13 @@ function buildOrder(
   const t = snap.tickers.find((x) => x.symbol === decision.symbol);
   if (!t) return null;
   const pos = snap.book.positions.find((p) => p.symbol === decision.symbol);
-  if (decision.cut && pos) {
+  const flattening = isFlattening(pos, decision.side);
+  const cut = Boolean(decision.cut && pos);
+
+  if (teamBlocks(snap.book.positions, decision.symbol)) return null;
+  if (hasBlockingRestingLimit(snap, { cut, symbol: decision.symbol, side: decision.side })) return null;
+
+  if (cut && pos) {
     return {
       side: decision.side,
       symbol: decision.symbol,
@@ -119,9 +137,6 @@ function buildOrder(
       rationale: iris.reason,
     };
   }
-  const flattening = Boolean(
-    pos && ((pos.qty > 0 && decision.side === "sell") || (pos.qty < 0 && decision.side === "buy")),
-  );
   if (flattening && pos) {
     return {
       side: decision.side,
@@ -130,7 +145,21 @@ function buildOrder(
       rationale: iris.reason,
     };
   }
-  const sizePct = iris.risk.finalSizePct || decision.risk.sizePct;
+  if (decision.cut) return null;
+  if (!decision.gate.passed || decision.band === "reject" || decision.band === "wait") return null;
+
+  const openCount = snap.book.positions.filter((p) => Math.abs(p.qty) > 1e-8 && !p.teamLock).length;
+  const adding = Boolean(
+    pos && Math.abs(pos.qty) > 1e-8 && ((pos.qty > 0 && decision.side === "buy") || (pos.qty < 0 && decision.side === "sell")),
+  );
+  if (!adding && openCount >= HARD.MAX_OPEN_LEGS) return null;
+
+  const cashPct = (100 * snap.book.cash) / Math.max(snap.book.equity, 1);
+  if (snap.book.dayPnlPct < -2.4 || cashPct < 18) return null;
+
+  const irisPct = iris.risk.finalSizePct ?? 0;
+  const enginePct = decision.risk.sizePct ?? 0;
+  const sizePct = Math.min(irisPct, enginePct, 6);
   if (!(sizePct > 0)) return null;
   const px = markOf(t);
   const qty = qtyForClip(snap.book.equity, sizePct, px, decision.symbol);
@@ -174,6 +203,8 @@ export function validateAndFinalize(input: {
   const { snap, locale, vesper, ash, kai, damian, iris, decision } = input;
   const agents = mapAgents(vesper, ash, kai, damian, iris);
   let order = buildOrder(snap, decision, iris, locale);
+  if (order && order.side !== decision.side) order = null;
+  if (order && order.symbol !== decision.symbol) order = null;
   order = gateCouncilOrder(order, agents, snap);
   const src = sourcesOf(vesper, ash, kai, damian, iris);
   const llmCount = Object.values(src).filter((s) => s === "llm").length;

@@ -1,5 +1,5 @@
 import { i as isLot } from "./universe-BHNCzOwL.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/locale-ClSzaMgA.js
+//#region node_modules/.nitro/vite/services/ssr/assets/locale-BsTjn0Xx.js
 var LOCALES = [{
 	id: "en",
 	label: "English"
@@ -776,6 +776,54 @@ var catalog = {
 		en: "Idle",
 		pl: "Cisza"
 	},
+	"floor.aiOnline": {
+		en: "AI online",
+		pl: "AI online"
+	},
+	"floor.aiDegraded": {
+		en: "AI degraded",
+		pl: "AI ograniczona"
+	},
+	"floor.sourceLlm": {
+		en: "Grok",
+		pl: "Grok"
+	},
+	"floor.sourceLocal": {
+		en: "local",
+		pl: "lokalnie"
+	},
+	"floor.sourceRules": {
+		en: "rule engine",
+		pl: "silnik reguł"
+	},
+	"floor.disagree": {
+		en: "High disagreement",
+		pl: "Duża rozbieżność"
+	},
+	"floor.score": {
+		en: "score {n}",
+		pl: "wynik {n}"
+	},
+	"floor.band.reject": {
+		en: "reject",
+		pl: "odrzut"
+	},
+	"floor.band.wait": {
+		en: "wait",
+		pl: "czekamy"
+	},
+	"floor.band.small": {
+		en: "small size",
+		pl: "mała pozycja"
+	},
+	"floor.band.normal": {
+		en: "normal size",
+		pl: "normalna pozycja"
+	},
+	"floor.band.high": {
+		en: "high quality",
+		pl: "wysoka jakość"
+	},
 	"floor.reading": {
 		en: "Reading the tape…",
 		pl: "Patrzą na notowania…"
@@ -877,24 +925,24 @@ var catalog = {
 		pl: "Ryzyko"
 	},
 	"mandate.vesper": {
-		en: "Momentum: +from open, RSI, vs 20-SMA, rvol. Rides expansion, cuts stalls.",
-		pl: "Momentum: zmiana od otwarcia, RSI, vs SMA20, rvol. Jedzie z trendem, zdejmuje gdy staje."
+		en: "Momentum specialist. Independent 15m expansion. Does not see the others.",
+		pl: "Specjalistka momentum. Niezależna ocena ekspansji 15m. Nie widzi innych."
 	},
 	"mandate.ash": {
-		en: "Mean reversion: vs 20-SMA and RSI extremes. One clip, no averaging.",
-		pl: "Powrót do średniej: skrajności vs SMA20 i RSI. Jeden clip, bez dokładania."
+		en: "Mean reversion. HOLD is valid. Does not oppose Vesper.",
+		pl: "Powrót do średniej. HOLD jest OK. Nie contruje Vesper."
 	},
 	"mandate.kai": {
-		en: "15m / 1h / 4h: FVG on the highest TF the price tags, or a 15m pullback 18–62%, plus rvol ≥ 0.55. 1m is the chart only.",
-		pl: "15m / 1h / 4h: FVG na najwyższym TF, które cena testuje, albo cofnięcie 15m 18–62%, plus rvol ≥ 0,55. 1m tylko na wykresie."
+		en: "Entry quality: ready, wait, or blocked. Never flips direction. 15m / 1h / 4h only.",
+		pl: "Jakość wejścia: gotowe, czekaj albo blokada. Nigdy nie odwraca kierunku. Tylko 15m / 1h / 4h."
 	},
 	"mandate.damian": {
-		en: "Sector weather: stocks, crypto, metals, dollar, vol. No RSI, no ticker pick.",
-		pl: "Pogoda sektorów: akcje, krypto, metale, dolar, vol. Bez RSI, bez wyboru tickera."
+		en: "Macro regime. Never votes a ticker. Headwind, not a veto.",
+		pl: "Reżim makro. Nigdy nie głosuje spółki. Przeciwny wiatr, nie veto."
 	},
 	"mandate.iris": {
-		en: "Sizes 2–6% from Damian's weather. Fees ≤ 5% round-trip. Adds only on a pullback, max two a day.",
-		pl: "Clip 2–6% od pogody Damiana. Opłaty ≤ 5% za otwarcie i zamknięcie. Dokładki tylko na korekcie, max dwie dziennie."
+		en: "Risk: APPROVE / REDUCE / WAIT / REJECT. Does not invent direction. Code owns size.",
+		pl: "Ryzyko: ZATWIERDŹ / ZMNIEJSZ / CZEKAJ / ODRZUĆ. Nie wymyśla kierunku. Kod liczy wielkość."
 	},
 	"ticket.buy": {
 		en: "buy",
@@ -2007,7 +2055,7 @@ function txError(message, locale = getLocale()) {
 	return key ? t(key, void 0, locale) : message;
 }
 //#endregion
-//#region node_modules/.nitro/vite/services/ssr/assets/labels-B-Uz_Qoo.js
+//#region node_modules/.nitro/vite/services/ssr/assets/labels-C5qbnVNJ.js
 function money(n, digits = 2) {
 	const abs = Math.abs(n);
 	const sign = n < 0 ? "-" : "";

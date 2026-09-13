@@ -51,7 +51,7 @@ export function runLocalV2(input: {
     }
   }
 
-  const checks = applyRestingLimitGate(irisChecks(snap, decision, kai.primary), snap, kai.primary, decision.cut);
+  const checks = applyRestingLimitGate(irisChecks(snap, decision, kai.primary), snap, kai.primary, decision);
   const iris = irisRules({ locale, decision, checks });
   return validateAndFinalize({ snap, locale, vesper, ash, kai, damian, iris, decision });
 }

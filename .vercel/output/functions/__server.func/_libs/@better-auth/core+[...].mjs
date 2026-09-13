@@ -1011,1553 +1011,6 @@ function toKebabCase(input) {
 	return splitWords(input).map((word) => word.toLowerCase()).join("-");
 }
 //#endregion
-//#region node_modules/@better-auth/utils/dist/base64.mjs
-function getAlphabet(urlSafe) {
-	return urlSafe ? "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_" : "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-}
-function base64Encode(data, alphabet, padding) {
-	let result = "";
-	let buffer = 0;
-	let shift = 0;
-	for (const byte of data) {
-		buffer = buffer << 8 | byte;
-		shift += 8;
-		while (shift >= 6) {
-			shift -= 6;
-			result += alphabet[buffer >> shift & 63];
-		}
-	}
-	if (shift > 0) result += alphabet[buffer << 6 - shift & 63];
-	if (padding) {
-		const padCount = (4 - result.length % 4) % 4;
-		result += "=".repeat(padCount);
-	}
-	return result;
-}
-function base64Decode(data, alphabet) {
-	const decodeMap = /* @__PURE__ */ new Map();
-	for (let i = 0; i < alphabet.length; i++) decodeMap.set(alphabet[i], i);
-	const result = [];
-	let buffer = 0;
-	let bitsCollected = 0;
-	for (const char of data) {
-		if (char === "=") break;
-		const value = decodeMap.get(char);
-		if (value === void 0) throw new Error(`Invalid Base64 character: ${char}`);
-		buffer = buffer << 6 | value;
-		bitsCollected += 6;
-		if (bitsCollected >= 8) {
-			bitsCollected -= 8;
-			result.push(buffer >> bitsCollected & 255);
-		}
-	}
-	return Uint8Array.from(result);
-}
-var base64$1 = {
-	encode(data, options = {}) {
-		const alphabet = getAlphabet(false);
-		return base64Encode(typeof data === "string" ? new TextEncoder().encode(data) : new Uint8Array(data), alphabet, options.padding ?? true);
-	},
-	decode(data) {
-		if (typeof data !== "string") data = new TextDecoder().decode(data);
-		const alphabet = getAlphabet(data.includes("-") || data.includes("_"));
-		return base64Decode(data, alphabet);
-	}
-};
-var base64Url = {
-	encode(data, options = {}) {
-		const alphabet = getAlphabet(true);
-		return base64Encode(typeof data === "string" ? new TextEncoder().encode(data) : new Uint8Array(data), alphabet, options.padding ?? true);
-	},
-	decode(data) {
-		return base64Decode(data, getAlphabet(data.includes("-") || data.includes("_")));
-	}
-};
-//#endregion
-//#region node_modules/jose/dist/webapi/lib/buffer_utils.js
-var encoder = new TextEncoder();
-var decoder = new TextDecoder();
-var strictDecoder = new TextDecoder("utf-8", { fatal: true });
-var MAX_INT32 = 2 ** 32;
-function concat(...buffers) {
-	const size = buffers.reduce((acc, { length }) => acc + length, 0);
-	const buf = new Uint8Array(size);
-	let i = 0;
-	for (const buffer of buffers) {
-		buf.set(buffer, i);
-		i += buffer.length;
-	}
-	return buf;
-}
-function writeUInt32BE(buf, value, offset) {
-	if (value < 0 || value >= MAX_INT32) throw new RangeError(`value must be >= 0 and <= ${MAX_INT32 - 1}. Received ${value}`);
-	buf.set([
-		value >>> 24,
-		value >>> 16,
-		value >>> 8,
-		value & 255
-	], offset);
-}
-function uint64be(value) {
-	const high = Math.floor(value / MAX_INT32);
-	const low = value % MAX_INT32;
-	const buf = /* @__PURE__ */ new Uint8Array(8);
-	writeUInt32BE(buf, high, 0);
-	writeUInt32BE(buf, low, 4);
-	return buf;
-}
-function uint32be(value) {
-	const buf = /* @__PURE__ */ new Uint8Array(4);
-	writeUInt32BE(buf, value);
-	return buf;
-}
-function encode$2(string) {
-	const bytes = new Uint8Array(string.length);
-	for (let i = 0; i < string.length; i++) {
-		const code = string.charCodeAt(i);
-		if (code > 127) throw new TypeError("non-ASCII string encountered in encode()");
-		bytes[i] = code;
-	}
-	return bytes;
-}
-//#endregion
-//#region node_modules/jose/dist/webapi/lib/crypto_key.js
-var unusable = (name, prop = "algorithm.name") => /* @__PURE__ */ new TypeError(`CryptoKey does not support this operation, its ${prop} must be ${name}`);
-function checkUsage(key, usage) {
-	if (usage && !key.usages.includes(usage)) throw new TypeError(`CryptoKey does not support this operation, its usages must include ${usage}.`);
-}
-function checkModulusLength(alg, key) {
-	const { modulusLength } = key.algorithm;
-	if (typeof modulusLength !== "number" || modulusLength < 2048) throw new TypeError(`${alg} requires key modulusLength to be 2048 bits or larger`);
-}
-function checkCryptoKey(key, expected, usage) {
-	const algorithm = key.algorithm;
-	if (algorithm.name !== expected.name) throw unusable(expected.name);
-	if (expected.hash && algorithm.hash?.name !== expected.hash) throw unusable(expected.hash, "algorithm.hash");
-	if (expected.namedCurve && algorithm.namedCurve !== expected.namedCurve) throw unusable(expected.namedCurve, "algorithm.namedCurve");
-	if (expected.length !== void 0 && algorithm.length !== expected.length) throw unusable(expected.length, "algorithm.length");
-	checkUsage(key, usage);
-}
-//#endregion
-//#region node_modules/jose/dist/webapi/lib/invalid_key_input.js
-function message(msg, actual, ...types) {
-	if (types.length > 2) {
-		const last = types.pop();
-		msg += `one of type ${types.join(", ")}, or ${last}.`;
-	} else if (types.length === 2) msg += `one of type ${types[0]} or ${types[1]}.`;
-	else msg += `of type ${types[0]}.`;
-	if (actual == null) msg += ` Received ${actual}`;
-	else if (typeof actual === "function" && actual.name) msg += ` Received function ${actual.name}`;
-	else if (typeof actual === "object" && actual != null) {
-		if (actual.constructor?.name) msg += ` Received an instance of ${actual.constructor.name}`;
-	}
-	return msg;
-}
-var invalidKeyInput = (actual, ...types) => message("Key must be ", actual, ...types);
-var withAlg = (alg, actual, ...types) => message(`Key for the ${alg} algorithm must be `, actual, ...types);
-//#endregion
-//#region node_modules/jose/dist/webapi/util/errors.js
-var JOSEError = class extends Error {
-	static code = "ERR_JOSE_GENERIC";
-	code = "ERR_JOSE_GENERIC";
-	constructor(message, options) {
-		super(message, options);
-		this.name = this.constructor.name;
-		Error.captureStackTrace?.(this, this.constructor);
-	}
-};
-var JWTClaimValidationFailed = class extends JOSEError {
-	static code = "ERR_JWT_CLAIM_VALIDATION_FAILED";
-	code = "ERR_JWT_CLAIM_VALIDATION_FAILED";
-	claim;
-	reason;
-	payload;
-	constructor(message, payload, claim = "unspecified", reason = "unspecified") {
-		super(message, { cause: {
-			claim,
-			reason,
-			payload
-		} });
-		this.claim = claim;
-		this.reason = reason;
-		this.payload = payload;
-	}
-};
-var JWTExpired = class extends JOSEError {
-	static code = "ERR_JWT_EXPIRED";
-	code = "ERR_JWT_EXPIRED";
-	claim;
-	reason;
-	payload;
-	constructor(message, payload, claim = "unspecified", reason = "unspecified") {
-		super(message, { cause: {
-			claim,
-			reason,
-			payload
-		} });
-		this.claim = claim;
-		this.reason = reason;
-		this.payload = payload;
-	}
-};
-var JOSEAlgNotAllowed = class extends JOSEError {
-	static code = "ERR_JOSE_ALG_NOT_ALLOWED";
-	code = "ERR_JOSE_ALG_NOT_ALLOWED";
-};
-var JOSENotSupported = class extends JOSEError {
-	static code = "ERR_JOSE_NOT_SUPPORTED";
-	code = "ERR_JOSE_NOT_SUPPORTED";
-};
-var JWEDecryptionFailed = class extends JOSEError {
-	static code = "ERR_JWE_DECRYPTION_FAILED";
-	code = "ERR_JWE_DECRYPTION_FAILED";
-	constructor(message = "decryption operation failed", options) {
-		super(message, options);
-	}
-};
-var JWEInvalid = class extends JOSEError {
-	static code = "ERR_JWE_INVALID";
-	code = "ERR_JWE_INVALID";
-};
-var JWSInvalid = class extends JOSEError {
-	static code = "ERR_JWS_INVALID";
-	code = "ERR_JWS_INVALID";
-};
-var JWTInvalid = class extends JOSEError {
-	static code = "ERR_JWT_INVALID";
-	code = "ERR_JWT_INVALID";
-};
-var JWKInvalid = class extends JOSEError {
-	static code = "ERR_JWK_INVALID";
-	code = "ERR_JWK_INVALID";
-};
-var JWKSInvalid = class extends JOSEError {
-	static code = "ERR_JWKS_INVALID";
-	code = "ERR_JWKS_INVALID";
-};
-var JWKSNoMatchingKey = class extends JOSEError {
-	static code = "ERR_JWKS_NO_MATCHING_KEY";
-	code = "ERR_JWKS_NO_MATCHING_KEY";
-	constructor(message = "no applicable key found in the JSON Web Key Set", options) {
-		super(message, options);
-	}
-};
-var JWKSMultipleMatchingKeys = class extends JOSEError {
-	[Symbol.asyncIterator] = async function* () {};
-	static code = "ERR_JWKS_MULTIPLE_MATCHING_KEYS";
-	code = "ERR_JWKS_MULTIPLE_MATCHING_KEYS";
-	constructor(message = "multiple matching keys found in the JSON Web Key Set", options) {
-		super(message, options);
-	}
-};
-var JWKSTimeout = class extends JOSEError {
-	static code = "ERR_JWKS_TIMEOUT";
-	code = "ERR_JWKS_TIMEOUT";
-	constructor(message = "request timed out", options) {
-		super(message, options);
-	}
-};
-var JWSSignatureVerificationFailed = class extends JOSEError {
-	static code = "ERR_JWS_SIGNATURE_VERIFICATION_FAILED";
-	code = "ERR_JWS_SIGNATURE_VERIFICATION_FAILED";
-	constructor(message = "signature verification failed", options) {
-		super(message, options);
-	}
-};
-//#endregion
-//#region node_modules/jose/dist/webapi/lib/is_key_like.js
-function assertCryptoKey(key) {
-	if (!isCryptoKey(key)) throw new Error("CryptoKey instance expected");
-}
-var isCryptoKey = (key) => {
-	if (key?.[Symbol.toStringTag] === "CryptoKey") return true;
-	try {
-		return key instanceof CryptoKey;
-	} catch {
-		return false;
-	}
-};
-var isKeyObject = (key) => key?.[Symbol.toStringTag] === "KeyObject";
-var isKeyLike = (key) => isCryptoKey(key) || isKeyObject(key);
-//#endregion
-//#region node_modules/jose/dist/webapi/lib/base64.js
-function encodeBase64(input) {
-	if (Uint8Array.prototype.toBase64) return input.toBase64();
-	const CHUNK_SIZE = 32768;
-	const arr = [];
-	for (let i = 0; i < input.length; i += CHUNK_SIZE) arr.push(String.fromCharCode.apply(null, input.subarray(i, i + CHUNK_SIZE)));
-	return btoa(arr.join(""));
-}
-function decodeBase64(encoded) {
-	if (Uint8Array.fromBase64) return Uint8Array.fromBase64(encoded);
-	const binary = atob(encoded);
-	const bytes = new Uint8Array(binary.length);
-	for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-	return bytes;
-}
-//#endregion
-//#region node_modules/jose/dist/webapi/util/base64url.js
-var invalid = "The input to be decoded is not correctly encoded.";
-function decode$1(input) {
-	if (Uint8Array.fromBase64) try {
-		return Uint8Array.fromBase64(typeof input === "string" ? input : decoder.decode(input), { alphabet: "base64url" });
-	} catch (cause) {
-		throw new TypeError(invalid, { cause });
-	}
-	let encoded = input;
-	if (encoded instanceof Uint8Array) encoded = decoder.decode(encoded);
-	if (encoded.includes("+") || encoded.includes("/")) throw new TypeError(invalid);
-	encoded = encoded.replace(/-/g, "+").replace(/_/g, "/");
-	try {
-		return decodeBase64(encoded);
-	} catch {
-		throw new TypeError(invalid);
-	}
-}
-function encode$1(input) {
-	let unencoded = input;
-	if (typeof unencoded === "string") unencoded = encoder.encode(unencoded);
-	if (Uint8Array.prototype.toBase64) return unencoded.toBase64({
-		alphabet: "base64url",
-		omitPadding: true
-	});
-	return encodeBase64(unencoded).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
-}
-//#endregion
-//#region node_modules/jose/dist/webapi/lib/type_checks.js
-function isObject$1(input) {
-	if (typeof input !== "object" || input === null || Object.prototype.toString.call(input) !== "[object Object]") return false;
-	const prototype = Object.getPrototypeOf(input);
-	if (prototype === null) return true;
-	let proto = prototype;
-	while (Object.getPrototypeOf(proto) !== null) proto = Object.getPrototypeOf(proto);
-	return prototype === proto;
-}
-function isDisjoint(...headers) {
-	const parameters = /* @__PURE__ */ new Set();
-	for (const header of headers) {
-		if (!header) continue;
-		for (const parameter of Object.keys(header)) {
-			if (parameters.has(parameter)) return false;
-			parameters.add(parameter);
-		}
-	}
-	return true;
-}
-var isJWK = (key) => isObject$1(key) && typeof key.kty === "string";
-var isPrivateJWK = (key) => key.kty !== "oct" && (key.kty === "AKP" && typeof key.priv === "string" || typeof key.d === "string");
-var isPublicJWK = (key) => key.kty !== "oct" && key.d === void 0 && key.priv === void 0;
-var isSecretJWK = (key) => key.kty === "oct" && typeof key.k === "string";
-//#endregion
-//#region node_modules/jose/dist/webapi/lib/helpers.js
-var unprotected = Symbol();
-function assertNotSet(value, name) {
-	if (value) throw new TypeError(`${name} can only be called once`);
-}
-function decodeBase64url(value, label, ErrorClass) {
-	try {
-		return decode$1(value);
-	} catch {
-		throw new ErrorClass(`Failed to base64url decode the ${label}`);
-	}
-}
-function encodeBase64url(value, label, ErrorClass) {
-	try {
-		return encode$2(value);
-	} catch {
-		throw new ErrorClass(`The ${label} is not a valid base64url string`);
-	}
-}
-async function digest(algorithm, data) {
-	const subtleDigest = `SHA-${algorithm.slice(-3)}`;
-	return new Uint8Array(await crypto.subtle.digest(subtleDigest, data));
-}
-function parseJoseHeader(b64, ErrorClass, message) {
-	let parsed;
-	try {
-		parsed = JSON.parse(strictDecoder.decode(decode$1(b64)));
-	} catch {
-		throw new ErrorClass(message);
-	}
-	if (!isObject$1(parsed)) throw new ErrorClass(message);
-	return parsed;
-}
-//#endregion
-//#region node_modules/jose/dist/webapi/lib/jwk_to_key.js
-async function jwkToKey(entry, jwk) {
-	if (jwk.kty === "RSA" && "oth" in jwk && jwk.oth !== void 0) throw new JOSENotSupported("RSA JWK \"oth\" (Other Primes Info) Parameter value is not supported");
-	if (!entry.kty.includes(jwk.kty)) throw new JOSENotSupported("Invalid or unsupported JWK \"alg\" (Algorithm) Parameter value");
-	const algorithm = entry.resolve?.({
-		kty: jwk.kty,
-		crv: jwk.crv
-	}) ?? entry.subtle;
-	const isPrivate = !!(jwk.d || jwk.priv);
-	const keyData = { ...jwk };
-	if (keyData.kty !== "AKP") delete keyData.alg;
-	delete keyData.use;
-	return crypto.subtle.importKey("jwk", keyData, algorithm, jwk.ext ?? !isPrivate, jwk.key_ops ?? entry.usages[isPrivate ? 1 : 0]);
-}
-//#endregion
-//#region node_modules/jose/dist/webapi/lib/key.js
-var tag = (key) => key[Symbol.toStringTag];
-var jwkMatchesOp = (entry, key, usage) => {
-	const { alg } = entry;
-	if (key.use !== void 0) {
-		const expected = usage === "sign" || usage === "verify" ? "sig" : "enc";
-		if (key.use !== expected) throw new TypeError(`Invalid key for this operation, its "use" must be "${expected}" when present`);
-	}
-	if (key.alg !== void 0 && key.alg !== alg) throw new TypeError(`Invalid key for this operation, its "alg" must be "${alg}" when present`);
-	if (Array.isArray(key.key_ops)) {
-		const expectedKeyOp = usage === "encrypt" || usage === "decrypt" ? entry.ops?.[usage === "encrypt" ? 0 : 1] : usage;
-		if (expectedKeyOp && !key.key_ops.includes(expectedKeyOp)) throw new TypeError(`Invalid key for this operation, its "key_ops" must include "${expectedKeyOp}" when present`);
-	}
-};
-function checkKeyType(entry, key, usage) {
-	const { alg, secret } = entry;
-	const privateKey = usage === "decrypt" || usage === "sign";
-	if (secret && key instanceof Uint8Array) return [BYTES, key];
-	if (isJWK(key)) {
-		if (secret ? !isSecretJWK(key) : !(privateKey ? isPrivateJWK(key) : isPublicJWK(key))) throw new TypeError(secret ? `JSON Web Key for symmetric algorithms must have JWK "kty" (Key Type) equal to "oct" and the JWK "k" (Key Value) present` : `JSON Web Key for this operation must be a ${privateKey ? "private" : "public"} JWK`);
-		jwkMatchesOp(entry, key, usage);
-		return [JWK, key];
-	}
-	if (!isKeyLike(key)) throw new TypeError(secret ? withAlg(alg, key, "CryptoKey", "KeyObject", "JSON Web Key", "Uint8Array") : withAlg(alg, key, "CryptoKey", "KeyObject", "JSON Web Key"));
-	if (secret) {
-		if (key.type !== "secret") throw new TypeError(`${tag(key)} instances for symmetric algorithms must be of type "secret"`);
-	} else {
-		if (key.type === "secret") throw new TypeError(`${tag(key)} instances for asymmetric algorithms must not be of type "secret"`);
-		const expectedType = privateKey ? "private" : "public";
-		if ((key.type === "public" || key.type === "private") && key.type !== expectedType) {
-			const operation = usage === "sign" ? "signing" : usage === "verify" ? "verifying" : `${usage.slice(0, -1)}tion`;
-			throw new TypeError(`${tag(key)} instances for asymmetric algorithm ${operation} must be of type "${expectedType}"`);
-		}
-	}
-	return isCryptoKey(key) ? [CRYPTO, key] : [KEYOBJECT, key];
-}
-var BYTES = 0;
-var CRYPTO = 1;
-var KEYOBJECT = 2;
-var JWK = 3;
-var cache;
-var nist = {
-	__proto__: null,
-	prime256v1: "P-256",
-	secp384r1: "P-384",
-	secp521r1: "P-521"
-};
-function cached$1(key, alg, value) {
-	cache ||= /* @__PURE__ */ new WeakMap();
-	const entry = cache.get(key);
-	if (value) {
-		if (entry) entry[alg] = value;
-		else cache.set(key, {
-			__proto__: null,
-			[alg]: value
-		});
-	}
-	return value ?? entry?.[alg];
-}
-var handleJWK = async (key, jwk, entry) => cached$1(key, entry.alg) ?? cached$1(key, entry.alg, await jwkToKey(entry, {
-	...jwk,
-	alg: entry.alg
-}));
-var handleKeyObject = (keyObject, entry) => {
-	const hit = cached$1(keyObject, entry.alg);
-	if (hit) return hit;
-	const isPublic = keyObject.type === "public";
-	const usages = entry.usages[isPublic ? 0 : 1];
-	const { asymmetricKeyType } = keyObject;
-	const crv = nist[keyObject.asymmetricKeyDetails?.namedCurve];
-	const params = entry.resolve?.({
-		crv,
-		asymmetricKeyType
-	}) ?? entry.subtle;
-	return cached$1(keyObject, entry.alg, keyObject.toCryptoKey(params, isPublic, usages));
-};
-async function prepareKey(entry, key, usage) {
-	const tagged = checkKeyType(entry, key, usage);
-	switch (tagged[0]) {
-		case BYTES:
-		case CRYPTO: return tagged[1];
-		case JWK: {
-			const key = tagged[1];
-			if (key.k) return decode$1(key.k);
-			if (!Object.isFrozen(key)) {
-				const { key_ops } = key;
-				if (Array.isArray(key_ops)) Object.freeze(key_ops);
-				Object.freeze(key);
-			}
-			return handleJWK(key, key, entry);
-		}
-		case KEYOBJECT: {
-			const keyObject = tagged[1];
-			if (keyObject.type === "secret") return keyObject.export();
-			if ("toCryptoKey" in keyObject && typeof keyObject.toCryptoKey === "function") return handleKeyObject(keyObject, entry);
-			return handleJWK(keyObject, keyObject.export({ format: "jwk" }), entry);
-		}
-	}
-}
-//#endregion
-//#region node_modules/jose/dist/webapi/lib/key_descriptor.js
-function table(entries) {
-	const out = { __proto__: null };
-	for (const alg in entries) out[alg] = {
-		...entries[alg],
-		alg
-	};
-	return out;
-}
-//#endregion
-//#region node_modules/jose/dist/webapi/lib/jwe_algorithms.js
-var wrap = [["encrypt", "wrapKey"], ["decrypt", "unwrapKey"]];
-var derive = [[], ["deriveBits"]];
-var none = [[], []];
-function rsaes(bits) {
-	return {
-		kty: ["RSA"],
-		subtle: {
-			name: "RSA-OAEP",
-			hash: `SHA-${bits}`
-		},
-		usages: wrap,
-		ops: ["wrapKey", "unwrapKey"]
-	};
-}
-function ecdh() {
-	return {
-		kty: ["EC", "OKP"],
-		subtle: { name: "ECDH" },
-		resolve: ({ kty, crv, asymmetricKeyType }) => {
-			if (crv === "X25519" || asymmetricKeyType === "x25519") return { name: "X25519" };
-			if (kty === "OKP") throw new JOSENotSupported("Invalid or unsupported JWK \"alg\" (Algorithm) Parameter value");
-			return {
-				name: "ECDH",
-				namedCurve: crv
-			};
-		},
-		usages: derive,
-		ops: [void 0, "deriveBits"]
-	};
-}
-function aeskw(bits, gcm = false) {
-	return {
-		kty: ["oct"],
-		secret: true,
-		subtle: {
-			name: gcm ? "AES-GCM" : "AES-KW",
-			length: bits
-		},
-		usages: none,
-		ops: gcm ? ["encrypt", "decrypt"] : ["wrapKey", "unwrapKey"]
-	};
-}
-function pbes2() {
-	return {
-		kty: ["oct"],
-		secret: true,
-		subtle: { name: "PBKDF2" },
-		usages: none,
-		ops: ["deriveBits", "deriveBits"]
-	};
-}
-var JWE = table({
-	dir: {
-		kty: ["oct"],
-		secret: true,
-		subtle: { name: "AES-GCM" },
-		usages: none,
-		ops: ["encrypt", "decrypt"]
-	},
-	"RSA-OAEP": rsaes(1),
-	"RSA-OAEP-256": rsaes(256),
-	"RSA-OAEP-384": rsaes(384),
-	"RSA-OAEP-512": rsaes(512),
-	"ECDH-ES": ecdh(),
-	"ECDH-ES+A128KW": ecdh(),
-	"ECDH-ES+A192KW": ecdh(),
-	"ECDH-ES+A256KW": ecdh(),
-	A128KW: aeskw(128),
-	A192KW: aeskw(192),
-	A256KW: aeskw(256),
-	A128GCMKW: aeskw(128, true),
-	A192GCMKW: aeskw(192, true),
-	A256GCMKW: aeskw(256, true),
-	"PBES2-HS256+A128KW": pbes2(),
-	"PBES2-HS384+A192KW": pbes2(),
-	"PBES2-HS512+A256KW": pbes2()
-});
-var contentOps = ["encrypt", "decrypt"];
-function contentEncryption(bits, cbc = false) {
-	return {
-		kty: ["oct"],
-		secret: true,
-		subtle: {
-			name: cbc ? "AES-CBC" : "AES-GCM",
-			length: bits
-		},
-		usages: none,
-		ops: contentOps,
-		cekBits: bits,
-		ivBits: cbc ? 128 : 96,
-		cbc
-	};
-}
-var ENC = table({
-	A128GCM: contentEncryption(128),
-	A192GCM: contentEncryption(192),
-	A256GCM: contentEncryption(256),
-	"A128CBC-HS256": contentEncryption(256, true),
-	"A192CBC-HS384": contentEncryption(384, true),
-	"A256CBC-HS512": contentEncryption(512, true)
-});
-function unsupported(parameter, name) {
-	throw new JOSENotSupported(`Invalid or unsupported "${parameter}" (JWE ${name}) header value`);
-}
-function jweAlgorithm(alg) {
-	return (typeof alg === "string" ? JWE[alg] : void 0) ?? unsupported("alg", "Algorithm");
-}
-function jweEncryption(enc) {
-	return (typeof enc === "string" ? ENC[enc] : void 0) ?? unsupported("enc", "Encryption Algorithm");
-}
-//#endregion
-//#region node_modules/jose/dist/webapi/lib/options.js
-var JWS_RECOGNIZED = {
-	__proto__: null,
-	b64: true
-};
-var JWE_RECOGNIZED = { __proto__: null };
-function validateAlgorithms(option, algorithms) {
-	if (algorithms !== void 0 && (!Array.isArray(algorithms) || algorithms.some((s) => typeof s !== "string"))) throw new TypeError(`"${option}" option must be an array of strings`);
-	if (!algorithms) return;
-	return new Set(algorithms);
-}
-function validateCritDuplicates(Err, protectedHeader) {
-	const { crit } = protectedHeader ?? {};
-	if (Array.isArray(crit) && new Set(crit).size !== crit.length) throw new Err("\"crit\" (Critical) Header Parameter MUST NOT contain duplicate values");
-}
-function validateCrit(Err, recognizedDefault, recognizedOption, protectedHeader, joseHeader) {
-	if (joseHeader.crit !== void 0 && protectedHeader?.crit === void 0) throw new Err("\"crit\" (Critical) Header Parameter MUST be integrity protected");
-	if (!protectedHeader || protectedHeader.crit === void 0) return [];
-	if (!Array.isArray(protectedHeader.crit) || protectedHeader.crit.length === 0 || protectedHeader.crit.some((input) => typeof input !== "string" || input.length === 0)) throw new Err("\"crit\" (Critical) Header Parameter MUST be an array of non-empty strings when present");
-	const recognized = recognizedOption === void 0 ? recognizedDefault : {
-		__proto__: null,
-		...recognizedOption,
-		...recognizedDefault
-	};
-	for (const parameter of protectedHeader.crit) {
-		if (!(parameter in recognized)) throw new JOSENotSupported(`Extension Header Parameter "${parameter}" is not recognized`);
-		if (!Object.hasOwn(joseHeader, parameter) || joseHeader[parameter] === void 0) throw new Err(`Extension Header Parameter "${parameter}" is missing`);
-		if (recognized[parameter] && (!Object.hasOwn(protectedHeader, parameter) || protectedHeader[parameter] === void 0)) throw new Err(`Extension Header Parameter "${parameter}" MUST be integrity protected`);
-	}
-	return protectedHeader.crit;
-}
-//#endregion
-//#region node_modules/jose/dist/webapi/lib/signing.js
-async function getSigKey(entry, key, usage) {
-	if (key instanceof Uint8Array) return crypto.subtle.importKey("raw", key, entry.subtle, false, [usage]);
-	checkCryptoKey(key, entry.subtle, usage);
-	if (entry.minRsaBits) checkModulusLength(entry.alg, key);
-	return key;
-}
-async function sign(entry, key, data) {
-	const cryptoKey = await getSigKey(entry, key, "sign");
-	const signature = await crypto.subtle.sign(entry.signing, cryptoKey, data);
-	return new Uint8Array(signature);
-}
-async function verify(entry, key, signature, data) {
-	const cryptoKey = await getSigKey(entry, key, "verify");
-	try {
-		return await crypto.subtle.verify(entry.signing, cryptoKey, signature, data);
-	} catch {
-		return false;
-	}
-}
-//#endregion
-//#region node_modules/jose/dist/webapi/lib/jws_algorithms.js
-var sig = [["verify"], ["sign"]];
-function hmac(bits) {
-	const subtle = {
-		name: "HMAC",
-		hash: `SHA-${bits}`
-	};
-	return {
-		kty: ["oct"],
-		secret: true,
-		subtle,
-		signing: subtle,
-		usages: sig
-	};
-}
-function rsa(bits, saltLength) {
-	const subtle = {
-		name: saltLength ? "RSA-PSS" : "RSASSA-PKCS1-v1_5",
-		hash: `SHA-${bits}`
-	};
-	return {
-		kty: ["RSA"],
-		subtle,
-		signing: saltLength ? {
-			...subtle,
-			saltLength
-		} : subtle,
-		usages: sig,
-		minRsaBits: 2048
-	};
-}
-function ecdsa(crv, bits) {
-	return {
-		kty: ["EC"],
-		crv,
-		subtle: {
-			name: "ECDSA",
-			namedCurve: crv
-		},
-		signing: {
-			name: "ECDSA",
-			hash: `SHA-${bits}`
-		},
-		usages: sig
-	};
-}
-function eddsa() {
-	const subtle = { name: "Ed25519" };
-	return {
-		kty: ["OKP"],
-		crv: "Ed25519",
-		subtle,
-		signing: subtle,
-		usages: sig
-	};
-}
-function mldsa(bits) {
-	const subtle = { name: `ML-DSA-${bits}` };
-	return {
-		kty: ["AKP"],
-		subtle,
-		signing: subtle,
-		usages: sig
-	};
-}
-var JWS = table({
-	HS256: hmac(256),
-	HS384: hmac(384),
-	HS512: hmac(512),
-	RS256: rsa(256),
-	RS384: rsa(384),
-	RS512: rsa(512),
-	PS256: rsa(256, 32),
-	PS384: rsa(384, 48),
-	PS512: rsa(512, 64),
-	ES256: ecdsa("P-256", 256),
-	ES384: ecdsa("P-384", 384),
-	ES512: ecdsa("P-521", 512),
-	EdDSA: eddsa(),
-	Ed25519: eddsa(),
-	"ML-DSA-44": mldsa(44),
-	"ML-DSA-65": mldsa(65),
-	"ML-DSA-87": mldsa(87)
-});
-function jwsAlgorithm(alg) {
-	const entry = typeof alg === "string" ? JWS[alg] : void 0;
-	if (!entry) throw new JOSENotSupported(`alg ${alg} is not supported either by JOSE or your javascript runtime`);
-	return entry;
-}
-//#endregion
-//#region node_modules/jose/dist/webapi/lib/jws_verify.js
-function prepareVerify(options) {
-	return [options && validateAlgorithms("algorithms", options.algorithms), options?.crit];
-}
-async function verifySignature$1(jws, shared, key) {
-	const { protected: encodedProtected, header, payload: inputPayload } = jws;
-	let parsedProt = {};
-	if (encodedProtected) parsedProt = parseJoseHeader(encodedProtected, JWSInvalid, "JWS Protected Header is invalid");
-	let joseHeader;
-	if (header !== void 0) {
-		if (!isDisjoint(parsedProt, header)) throw new JWSInvalid("JWS Protected and JWS Unprotected Header Parameter names must be disjoint");
-		joseHeader = {
-			...parsedProt,
-			...header
-		};
-	} else joseHeader = parsedProt;
-	const extensions = validateCrit(JWSInvalid, JWS_RECOGNIZED, shared[1], parsedProt, joseHeader);
-	let b64 = true;
-	if (extensions.includes("b64")) {
-		b64 = parsedProt.b64;
-		if (typeof b64 !== "boolean") throw new JWSInvalid("The \"b64\" (base64url-encode payload) Header Parameter must be a boolean");
-	}
-	const { alg } = joseHeader;
-	if (typeof alg !== "string" || !alg) throw new JWSInvalid("JWS \"alg\" (Algorithm) Header Parameter missing or invalid");
-	if (shared[0] && !shared[0].has(alg)) throw new JOSEAlgNotAllowed("\"alg\" (Algorithm) Header Parameter value not allowed");
-	if (b64) {
-		if (typeof inputPayload !== "string") throw new JWSInvalid("JWS Payload must be a string");
-	} else if (typeof inputPayload !== "string" && !(inputPayload instanceof Uint8Array)) throw new JWSInvalid("JWS Payload must be a string or an Uint8Array instance");
-	let resolvedKey = false;
-	if (typeof key === "function") {
-		key = await key(parsedProt, jws);
-		resolvedKey = true;
-	}
-	const entry = jwsAlgorithm(alg);
-	const data = concat(encodedProtected !== void 0 ? encode$2(encodedProtected) : /* @__PURE__ */ new Uint8Array(), encode$2("."), typeof inputPayload === "string" ? b64 ? shared[2] ??= encodeBase64url(inputPayload, "payload", JWSInvalid) : encoder.encode(inputPayload) : inputPayload);
-	const signature = decodeBase64url(jws.signature, "signature", JWSInvalid);
-	const k = await prepareKey(entry, key, "verify");
-	if (!await verify(entry, k, signature, data)) throw new JWSSignatureVerificationFailed();
-	let payload;
-	if (b64) payload = decodeBase64url(inputPayload, "payload", JWSInvalid);
-	else if (typeof inputPayload === "string") payload = encoder.encode(inputPayload);
-	else payload = inputPayload;
-	return [
-		payload,
-		parsedProt,
-		b64,
-		k,
-		resolvedKey
-	];
-}
-async function verifyCompact(jws, shared, key) {
-	if (jws instanceof Uint8Array) jws = decoder.decode(jws);
-	if (typeof jws !== "string") throw new JWSInvalid("Compact JWS must be a string or Uint8Array");
-	const { 0: protectedHeader, 1: payload, 2: signature, length } = jws.split(".");
-	if (length !== 3) throw new JWSInvalid("Invalid Compact JWS");
-	return verifySignature$1({
-		payload,
-		protected: protectedHeader,
-		signature
-	}, shared, key);
-}
-//#endregion
-//#region node_modules/jose/dist/webapi/lib/jwt_claims_set.js
-var epoch = (date) => Math.floor(date.getTime() / 1e3);
-var multipliers = {
-	s: 1,
-	m: 60,
-	h: 3600,
-	d: 86400,
-	w: 604800,
-	y: 31557600
-};
-var REGEX = /^(\+|\-)? ?(\d+|\d+\.\d+) ?(seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d|weeks?|w|years?|yrs?|y)(?: (ago|from now))?$/i;
-var checkFailed = "check_failed";
-function secs(str) {
-	const matched = REGEX.exec(str);
-	if (!matched || matched[4] && matched[1]) throw new TypeError("Invalid time period format");
-	const value = parseFloat(matched[2]);
-	const numericDate = Math.round(value * multipliers[matched[3][0].toLowerCase()]);
-	if (matched[1] === "-" || matched[4] === "ago") return -numericDate;
-	return numericDate;
-}
-function validateInput(label, input) {
-	if (!Number.isFinite(input)) throw new TypeError(`Invalid ${label} input`);
-	return input;
-}
-function numericDate(value, label) {
-	if (typeof value === "number") return validateInput(label, value);
-	if (value instanceof Date) return validateInput(label, epoch(value));
-	return epoch(/* @__PURE__ */ new Date()) + secs(value);
-}
-var normalizeTyp = (value) => {
-	if (value.includes("/")) return value.toLowerCase();
-	return `application/${value.toLowerCase()}`;
-};
-var checkAudiencePresence = (audPayload, audOption) => {
-	if (typeof audPayload === "string") return audOption.includes(audPayload);
-	if (Array.isArray(audPayload)) return audOption.some((aud) => audPayload.includes(aud));
-	return false;
-};
-function validateNumericDate(payload, claim, required = false) {
-	const value = payload[claim];
-	if (value === void 0 && !required) return void 0;
-	if (typeof value !== "number") throw new JWTClaimValidationFailed(`"${claim}" claim must be a number`, payload, claim, "invalid");
-	return value;
-}
-function unexpectedClaim(payload, claim) {
-	throw new JWTClaimValidationFailed(`unexpected "${claim}" claim value`, payload, claim, checkFailed);
-}
-function validateClaimsSet(protectedHeader, encodedPayload, options = {}) {
-	let payload;
-	try {
-		payload = JSON.parse(strictDecoder.decode(encodedPayload));
-	} catch {}
-	if (!isObject$1(payload)) throw new JWTInvalid("JWT Claims Set must be a top-level JSON object");
-	const { typ } = options;
-	if (typ && (typeof protectedHeader.typ !== "string" || normalizeTyp(protectedHeader.typ) !== normalizeTyp(typ))) throw new JWTClaimValidationFailed("unexpected \"typ\" JWT header value", payload, "typ", checkFailed);
-	const { requiredClaims = [], issuer, subject, audience, maxTokenAge } = options;
-	const presenceCheck = [...requiredClaims];
-	if (maxTokenAge !== void 0) presenceCheck.push("iat");
-	if (audience !== void 0) presenceCheck.push("aud");
-	if (subject !== void 0) presenceCheck.push("sub");
-	if (issuer !== void 0) presenceCheck.push("iss");
-	for (const claim of new Set(presenceCheck.reverse())) if (!Object.hasOwn(payload, claim)) throw new JWTClaimValidationFailed(`missing required "${claim}" claim`, payload, claim, "missing");
-	if (issuer !== void 0 && !(Array.isArray(issuer) ? issuer : [issuer]).includes(payload.iss)) unexpectedClaim(payload, "iss");
-	if (subject !== void 0 && payload.sub !== subject) unexpectedClaim(payload, "sub");
-	if (audience !== void 0 && !checkAudiencePresence(payload.aud, typeof audience === "string" ? [audience] : audience)) unexpectedClaim(payload, "aud");
-	const { clockTolerance } = options;
-	let tolerance = 0;
-	if (typeof clockTolerance === "string") tolerance = secs(clockTolerance);
-	else if (clockTolerance !== void 0) {
-		if (typeof clockTolerance !== "number") throw new TypeError("Invalid clockTolerance option type");
-		tolerance = clockTolerance;
-	}
-	validateInput("clockTolerance option", tolerance);
-	const { currentDate } = options;
-	const now = validateInput("currentDate option", epoch(currentDate || /* @__PURE__ */ new Date()));
-	const iat = validateNumericDate(payload, "iat", maxTokenAge !== void 0);
-	const nbf = validateNumericDate(payload, "nbf");
-	if (nbf !== void 0) {
-		if (nbf > now + tolerance) throw new JWTClaimValidationFailed("\"nbf\" claim timestamp check failed", payload, "nbf", checkFailed);
-	}
-	const exp = validateNumericDate(payload, "exp");
-	if (exp !== void 0) {
-		if (exp <= now - tolerance) throw new JWTExpired("\"exp\" claim timestamp check failed", payload, "exp", checkFailed);
-	}
-	if (maxTokenAge !== void 0) {
-		const age = now - iat;
-		const max = typeof maxTokenAge === "number" ? maxTokenAge : secs(maxTokenAge);
-		if (age - tolerance > max) throw new JWTExpired("\"iat\" claim timestamp check failed (too far in the past)", payload, "iat", checkFailed);
-		if (age < 0 - tolerance) throw new JWTClaimValidationFailed("\"iat\" claim timestamp check failed (it should be in the past)", payload, "iat", checkFailed);
-	}
-	return payload;
-}
-var JWTClaimsBuilder = class {
-	#payload;
-	constructor(payload) {
-		if (!isObject$1(payload)) throw new TypeError("JWT Claims Set MUST be an object");
-		this.#payload = structuredClone(payload);
-	}
-	data() {
-		return encoder.encode(JSON.stringify(this.#payload));
-	}
-	get iss() {
-		return this.#payload.iss;
-	}
-	set iss(value) {
-		this.#payload.iss = value;
-	}
-	get sub() {
-		return this.#payload.sub;
-	}
-	set sub(value) {
-		this.#payload.sub = value;
-	}
-	get aud() {
-		return this.#payload.aud;
-	}
-	set aud(value) {
-		this.#payload.aud = value;
-	}
-	set jti(value) {
-		this.#payload.jti = value;
-	}
-	set nbf(value) {
-		this.#payload.nbf = numericDate(value, "setNotBefore");
-	}
-	set exp(value) {
-		this.#payload.exp = numericDate(value, "setExpirationTime");
-	}
-	set iat(value) {
-		if (value === void 0) this.#payload.iat = epoch(/* @__PURE__ */ new Date());
-		else if (typeof value === "string") this.#payload.iat = validateInput("setIssuedAt", epoch(/* @__PURE__ */ new Date()) + secs(value));
-		else this.#payload.iat = numericDate(value, "setIssuedAt");
-	}
-};
-//#endregion
-//#region node_modules/jose/dist/webapi/jwt/verify.js
-async function jwtVerify(jwt, key, options) {
-	const verified = await verifyCompact(jwt, prepareVerify(options), key);
-	if (!verified[2]) throw new JWTInvalid("JWTs MUST NOT use unencoded payload");
-	const result = {
-		payload: validateClaimsSet(verified[1], verified[0], options),
-		protectedHeader: verified[1]
-	};
-	if (typeof key === "function") return {
-		...result,
-		key: verified[3]
-	};
-	return result;
-}
-//#endregion
-//#region node_modules/jose/dist/webapi/lib/key_algorithm.js
-function unsupportedAlg(source = "JWK \"alg\" (Algorithm) Parameter") {
-	throw new JOSENotSupported(`Invalid or unsupported ${source} value`);
-}
-function keyAlgorithm(alg, source) {
-	return (typeof alg === "string" ? JWS[alg] ?? JWE[alg] : void 0) ?? unsupportedAlg(source);
-}
-//#endregion
-//#region node_modules/jose/dist/webapi/jwks/local.js
-function signatureAlgorithm(alg) {
-	const entry = typeof alg === "string" ? JWS[alg] : void 0;
-	if (!entry || entry.secret) throw new JOSENotSupported("Unsupported \"alg\" value for a JSON Web Key Set");
-	return entry;
-}
-function isJWKSLike(jwks) {
-	if (!jwks || typeof jwks !== "object") return false;
-	const { keys } = jwks;
-	return Array.isArray(keys) && keys.every(isObject$1);
-}
-var LocalJWKSetImpl = class {
-	#jwks;
-	#cached = /* @__PURE__ */ new WeakMap();
-	constructor(jwks) {
-		if (!isJWKSLike(jwks)) throw new JWKSInvalid("JSON Web Key Set malformed");
-		this.#jwks = structuredClone(jwks);
-	}
-	jwks() {
-		return this.#jwks;
-	}
-	async getKey(protectedHeader, token) {
-		const { alg, kid } = {
-			...protectedHeader,
-			...token?.header
-		};
-		const entry = signatureAlgorithm(alg);
-		const candidates = this.#jwks.keys.filter((jwk) => entry.kty.includes(jwk.kty) && (typeof kid !== "string" || kid === jwk.kid) && (!(typeof jwk.alg === "string" || jwk.kty === "AKP") || alg === jwk.alg) && (typeof jwk.use !== "string" || jwk.use === "sig") && (!Array.isArray(jwk.key_ops) || jwk.key_ops.includes("verify")) && (!entry.crv || jwk.crv === entry.crv));
-		const { 0: jwk, length } = candidates;
-		if (length === 0) throw new JWKSNoMatchingKey();
-		if (length !== 1) {
-			const error = new JWKSMultipleMatchingKeys();
-			const _cached = this.#cached;
-			error[Symbol.asyncIterator] = async function* () {
-				for (const jwk of candidates) try {
-					yield await importWithAlgCache(_cached, jwk, entry);
-				} catch {}
-			};
-			throw error;
-		}
-		return importWithAlgCache(this.#cached, jwk, entry);
-	}
-};
-async function importWithAlgCache(cache, jwk, entry) {
-	const cached = cache.get(jwk) || cache.set(jwk, { __proto__: null }).get(jwk);
-	if (cached[entry.alg] === void 0) {
-		const key = await jwkToKey(entry, {
-			...jwk,
-			alg: entry.alg,
-			ext: true
-		});
-		if (key.type !== "public") throw new JWKSInvalid("JSON Web Key Set members must be public keys");
-		cached[entry.alg] = key;
-	}
-	return cached[entry.alg];
-}
-function createLocalJWKSet(jwks) {
-	const set = new LocalJWKSetImpl(jwks);
-	const localJWKSet = async (protectedHeader, token) => set.getKey(protectedHeader, token);
-	Object.defineProperty(localJWKSet, "jwks", { value: () => structuredClone(set.jwks()) });
-	return localJWKSet;
-}
-//#endregion
-//#region node_modules/jose/dist/webapi/jwks/remote.js
-function isCloudflareWorkers() {
-	return typeof WebSocketPair !== "undefined" || typeof navigator !== "undefined" && navigator.userAgent === "Cloudflare-Workers" || typeof EdgeRuntime !== "undefined" && EdgeRuntime === "vercel";
-}
-var USER_AGENT;
-if (typeof navigator === "undefined" || !navigator.userAgent?.startsWith?.("Mozilla/5.0 ")) USER_AGENT = `jose/v6.2.9`;
-var customFetch = Symbol();
-async function fetchJwks(url, headers, signal, fetchImpl = fetch) {
-	const response = await fetchImpl(url, {
-		method: "GET",
-		signal,
-		redirect: "manual",
-		headers
-	}).catch((err) => {
-		if (err.name === "TimeoutError") throw new JWKSTimeout();
-		throw err;
-	});
-	if (response.status !== 200) throw new JOSEError("Expected 200 OK from the JSON Web Key Set HTTP response");
-	try {
-		return await response.json();
-	} catch {
-		throw new JOSEError("Failed to parse the JSON Web Key Set HTTP response as JSON");
-	}
-}
-var jwksCache = Symbol();
-function isFreshJwksCache(input, cacheMaxAge) {
-	if (typeof input !== "object" || input === null) return false;
-	if (!("uat" in input) || typeof input.uat !== "number" || Date.now() - input.uat >= cacheMaxAge) return false;
-	if (!("jwks" in input) || !isObject$1(input.jwks) || !Array.isArray(input.jwks.keys) || !Array.prototype.every.call(input.jwks.keys, isObject$1)) return false;
-	return true;
-}
-var RemoteJWKSetImpl = class {
-	#url;
-	#timeoutDuration;
-	#cooldownDuration;
-	#cacheMaxAge;
-	#jwksTimestamp;
-	#pendingFetch;
-	#headers;
-	#customFetch;
-	#local;
-	#cache;
-	constructor(url, options) {
-		if (!(url instanceof URL)) throw new TypeError("url must be an instance of URL");
-		this.#url = new URL(url.href);
-		const opts = options ?? {};
-		this.#timeoutDuration = typeof opts.timeoutDuration === "number" ? opts.timeoutDuration : 5e3;
-		this.#cooldownDuration = typeof opts.cooldownDuration === "number" ? opts.cooldownDuration : 3e4;
-		this.#cacheMaxAge = typeof opts.cacheMaxAge === "number" ? opts.cacheMaxAge : 6e5;
-		this.#headers = new Headers(opts.headers);
-		if (USER_AGENT && !this.#headers.has("User-Agent")) this.#headers.set("User-Agent", USER_AGENT);
-		if (!this.#headers.has("accept")) {
-			this.#headers.set("accept", "application/json");
-			this.#headers.append("accept", "application/jwk-set+json");
-		}
-		this.#customFetch = opts[customFetch];
-		const cache = opts[jwksCache];
-		if (cache !== void 0) {
-			this.#cache = cache;
-			if (isFreshJwksCache(cache, this.#cacheMaxAge)) {
-				this.#jwksTimestamp = this.#cache.uat;
-				this.#local = createLocalJWKSet(this.#cache.jwks);
-			}
-		}
-	}
-	pendingFetch() {
-		return !!this.#pendingFetch;
-	}
-	#validFor(duration) {
-		return typeof this.#jwksTimestamp === "number" && Date.now() < this.#jwksTimestamp + duration;
-	}
-	coolingDown() {
-		return this.#validFor(this.#cooldownDuration);
-	}
-	fresh() {
-		return this.#validFor(this.#cacheMaxAge);
-	}
-	jwks() {
-		return this.#local?.jwks();
-	}
-	async getKey(protectedHeader, token) {
-		if (!this.#local || !this.fresh()) await this.reload();
-		try {
-			return await this.#local(protectedHeader, token);
-		} catch (err) {
-			if (err instanceof JWKSNoMatchingKey) {
-				if (this.coolingDown() === false) {
-					await this.reload();
-					return this.#local(protectedHeader, token);
-				}
-			}
-			throw err;
-		}
-	}
-	async reload() {
-		if (this.#pendingFetch && isCloudflareWorkers()) this.#pendingFetch = void 0;
-		this.#pendingFetch ||= fetchJwks(this.#url.href, this.#headers, AbortSignal.timeout(this.#timeoutDuration), this.#customFetch).then((json) => {
-			this.#local = createLocalJWKSet(json);
-			if (this.#cache) {
-				this.#cache.uat = Date.now();
-				this.#cache.jwks = json;
-			}
-			this.#jwksTimestamp = Date.now();
-		}).finally(() => {
-			this.#pendingFetch = void 0;
-		});
-		await this.#pendingFetch;
-	}
-};
-function createRemoteJWKSet(url, options) {
-	const set = new RemoteJWKSetImpl(url, options);
-	const remoteJWKSet = async (protectedHeader, token) => set.getKey(protectedHeader, token);
-	Object.defineProperties(remoteJWKSet, {
-		coolingDown: {
-			get: () => set.coolingDown(),
-			enumerable: true
-		},
-		fresh: {
-			get: () => set.fresh(),
-			enumerable: true
-		},
-		reload: {
-			value: () => set.reload(),
-			enumerable: true
-		},
-		reloading: {
-			get: () => set.pendingFetch(),
-			enumerable: true
-		},
-		jwks: {
-			value: () => set.jwks(),
-			enumerable: true
-		}
-	});
-	return remoteJWKSet;
-}
-//#endregion
-//#region node_modules/jose/dist/webapi/key/import.js
-async function importJWK(jwk, alg, options) {
-	if (!isObject$1(jwk)) throw new TypeError("JWK must be an object");
-	alg ??= jwk.alg;
-	const ext = options?.extractable ?? jwk.ext;
-	if (jwk.kty !== "oct" && !alg) throw new TypeError("\"alg\" argument is required when \"jwk.alg\" is not present");
-	switch (jwk.kty) {
-		case "oct":
-			if (typeof jwk.k !== "string" || !jwk.k) throw new TypeError("missing \"k\" (Key Value) Parameter value");
-			return decode$1(jwk.k);
-		case "RSA": return jwkToKey(keyAlgorithm(alg), {
-			...jwk,
-			alg,
-			ext
-		});
-		case "AKP":
-			if (typeof jwk.alg !== "string" || !jwk.alg) throw new TypeError("missing \"alg\" (Algorithm) Parameter value");
-			if (alg !== void 0 && alg !== jwk.alg) throw new TypeError("JWK alg and alg option value mismatch");
-			return jwkToKey(keyAlgorithm(jwk.alg), {
-				...jwk,
-				ext
-			});
-		case "EC":
-		case "OKP": return jwkToKey(keyAlgorithm(alg), {
-			...jwk,
-			alg,
-			ext
-		});
-		default: throw new JOSENotSupported("Unsupported \"kty\" (Key Type) Parameter value");
-	}
-}
-//#endregion
-//#region node_modules/jose/dist/webapi/util/decode_protected_header.js
-function decodeProtectedHeader(token) {
-	let protectedB64u;
-	if (typeof token === "string") {
-		const parts = token.split(".");
-		if (parts.length === 3 || parts.length === 5) [protectedB64u] = parts;
-	} else if (typeof token === "object" && token) {
-		if ("protected" in token) protectedB64u = token.protected;
-		else throw new TypeError("Token does not contain a Protected Header");
-	}
-	const invalid = "Invalid Token or Protected Header formatting";
-	if (typeof protectedB64u !== "string" || !protectedB64u) throw new TypeError(invalid);
-	return parseJoseHeader(protectedB64u, TypeError, invalid);
-}
-//#endregion
-//#region node_modules/jose/dist/webapi/util/decode_jwt.js
-function decodeJwt(jwt) {
-	if (typeof jwt !== "string") throw new JWTInvalid("JWTs must use Compact JWS serialization, JWT must be a string");
-	const { 1: payload, length } = jwt.split(".");
-	if (length === 5) throw new JWTInvalid("Only JWTs using Compact JWS serialization can be decoded");
-	if (length !== 3) throw new JWTInvalid("Invalid JWT");
-	if (!payload) throw new JWTInvalid("JWTs must contain a payload");
-	let decoded;
-	try {
-		decoded = decode$1(payload);
-	} catch {
-		throw new JWTInvalid("Failed to base64url decode the payload");
-	}
-	let result;
-	try {
-		result = JSON.parse(strictDecoder.decode(decoded));
-	} catch {
-		throw new JWTInvalid("Failed to parse the decoded payload as JSON");
-	}
-	if (!isObject$1(result)) throw new JWTInvalid("Invalid JWT Claims Set");
-	return result;
-}
-//#endregion
-//#region node_modules/@better-auth/utils/dist/random.mjs
-function expandAlphabet(alphabet) {
-	switch (alphabet) {
-		case "a-z": return "abcdefghijklmnopqrstuvwxyz";
-		case "A-Z": return "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-		case "0-9": return "0123456789";
-		case "-_": return "-_";
-		default: throw new Error(`Unsupported alphabet: ${alphabet}`);
-	}
-}
-function createRandomStringGenerator(...baseAlphabets) {
-	const baseCharSet = baseAlphabets.map(expandAlphabet).join("");
-	if (baseCharSet.length === 0) throw new Error("No valid characters provided for random string generation.");
-	const baseCharSetLength = baseCharSet.length;
-	return (length, ...alphabets) => {
-		if (length <= 0) throw new Error("Length must be a positive integer.");
-		let charSet = baseCharSet;
-		let charSetLength = baseCharSetLength;
-		if (alphabets.length > 0) {
-			charSet = alphabets.map(expandAlphabet).join("");
-			charSetLength = charSet.length;
-		}
-		const maxValid = Math.floor(256 / charSetLength) * charSetLength;
-		const buf = new Uint8Array(length * 2);
-		const bufLength = buf.length;
-		let result = "";
-		let bufIndex = bufLength;
-		let rand;
-		while (result.length < length) {
-			if (bufIndex >= bufLength) {
-				crypto.getRandomValues(buf);
-				bufIndex = 0;
-			}
-			rand = buf[bufIndex++];
-			if (rand < maxValid) result += charSet[rand % charSetLength];
-		}
-		return result;
-	};
-}
-//#endregion
-//#region node_modules/@better-auth/core/dist/db/get-tables.mjs
-var getAuthTables = (options) => {
-	const pluginSchema = (options.plugins ?? []).reduce((acc, plugin) => {
-		const schema = plugin.schema;
-		if (!schema) return acc;
-		for (const [key, value] of Object.entries(schema)) acc[key] = {
-			fields: {
-				...acc[key]?.fields,
-				...value.fields
-			},
-			modelName: value.modelName || key,
-			disableMigrations: value.disableMigration ?? acc[key]?.disableMigrations
-		};
-		return acc;
-	}, {});
-	const shouldAddRateLimitTable = options.rateLimit?.storage === "database";
-	const rateLimitTable = { rateLimit: {
-		modelName: options.rateLimit?.modelName || "rateLimit",
-		fields: {
-			key: {
-				type: "string",
-				unique: true,
-				required: true,
-				fieldName: options.rateLimit?.fields?.key || "key"
-			},
-			count: {
-				type: "number",
-				required: true,
-				fieldName: options.rateLimit?.fields?.count || "count"
-			},
-			lastRequest: {
-				type: "number",
-				bigint: true,
-				required: true,
-				fieldName: options.rateLimit?.fields?.lastRequest || "lastRequest",
-				defaultValue: () => Date.now()
-			}
-		}
-	} };
-	const { user, session, account, verification, ...pluginTables } = pluginSchema;
-	const verificationTable = { verification: {
-		modelName: options.verification?.modelName || "verification",
-		fields: {
-			identifier: {
-				type: "string",
-				required: true,
-				fieldName: options.verification?.fields?.identifier || "identifier",
-				index: true
-			},
-			value: {
-				type: "string",
-				required: true,
-				fieldName: options.verification?.fields?.value || "value"
-			},
-			expiresAt: {
-				type: "date",
-				required: true,
-				fieldName: options.verification?.fields?.expiresAt || "expiresAt"
-			},
-			createdAt: {
-				type: "date",
-				required: true,
-				defaultValue: () => /* @__PURE__ */ new Date(),
-				fieldName: options.verification?.fields?.createdAt || "createdAt"
-			},
-			updatedAt: {
-				type: "date",
-				required: true,
-				defaultValue: () => /* @__PURE__ */ new Date(),
-				onUpdate: () => /* @__PURE__ */ new Date(),
-				fieldName: options.verification?.fields?.updatedAt || "updatedAt"
-			},
-			...verification?.fields,
-			...options.verification?.additionalFields
-		},
-		order: 4
-	} };
-	const sessionTable = { session: {
-		modelName: options.session?.modelName || "session",
-		fields: {
-			expiresAt: {
-				type: "date",
-				required: true,
-				fieldName: options.session?.fields?.expiresAt || "expiresAt"
-			},
-			token: {
-				type: "string",
-				required: true,
-				fieldName: options.session?.fields?.token || "token",
-				unique: true
-			},
-			createdAt: {
-				type: "date",
-				required: true,
-				fieldName: options.session?.fields?.createdAt || "createdAt",
-				defaultValue: () => /* @__PURE__ */ new Date()
-			},
-			updatedAt: {
-				type: "date",
-				required: true,
-				fieldName: options.session?.fields?.updatedAt || "updatedAt",
-				onUpdate: () => /* @__PURE__ */ new Date()
-			},
-			ipAddress: {
-				type: "string",
-				required: false,
-				fieldName: options.session?.fields?.ipAddress || "ipAddress"
-			},
-			userAgent: {
-				type: "string",
-				required: false,
-				fieldName: options.session?.fields?.userAgent || "userAgent"
-			},
-			userId: {
-				type: "string",
-				fieldName: options.session?.fields?.userId || "userId",
-				references: {
-					model: "user",
-					field: "id",
-					onDelete: "cascade"
-				},
-				required: true,
-				index: true
-			},
-			...session?.fields,
-			...options.session?.additionalFields
-		},
-		order: 2
-	} };
-	return {
-		user: {
-			modelName: options.user?.modelName || "user",
-			fields: {
-				name: {
-					type: "string",
-					required: true,
-					fieldName: options.user?.fields?.name || "name",
-					sortable: true
-				},
-				email: {
-					type: "string",
-					unique: true,
-					required: true,
-					fieldName: options.user?.fields?.email || "email",
-					sortable: true
-				},
-				emailVerified: {
-					type: "boolean",
-					defaultValue: false,
-					required: true,
-					fieldName: options.user?.fields?.emailVerified || "emailVerified",
-					input: false
-				},
-				image: {
-					type: "string",
-					required: false,
-					fieldName: options.user?.fields?.image || "image"
-				},
-				createdAt: {
-					type: "date",
-					defaultValue: () => /* @__PURE__ */ new Date(),
-					required: true,
-					fieldName: options.user?.fields?.createdAt || "createdAt"
-				},
-				updatedAt: {
-					type: "date",
-					defaultValue: () => /* @__PURE__ */ new Date(),
-					onUpdate: () => /* @__PURE__ */ new Date(),
-					required: true,
-					fieldName: options.user?.fields?.updatedAt || "updatedAt"
-				},
-				...user?.fields,
-				...options.user?.additionalFields
-			},
-			order: 1
-		},
-		...!options.secondaryStorage || options.session?.storeSessionInDatabase ? sessionTable : {},
-		account: {
-			modelName: options.account?.modelName || "account",
-			fields: {
-				accountId: {
-					type: "string",
-					required: true,
-					fieldName: options.account?.fields?.accountId || "accountId"
-				},
-				providerId: {
-					type: "string",
-					required: true,
-					fieldName: options.account?.fields?.providerId || "providerId"
-				},
-				userId: {
-					type: "string",
-					references: {
-						model: "user",
-						field: "id",
-						onDelete: "cascade"
-					},
-					required: true,
-					fieldName: options.account?.fields?.userId || "userId",
-					index: true
-				},
-				accessToken: {
-					type: "string",
-					required: false,
-					returned: false,
-					fieldName: options.account?.fields?.accessToken || "accessToken"
-				},
-				refreshToken: {
-					type: "string",
-					required: false,
-					returned: false,
-					fieldName: options.account?.fields?.refreshToken || "refreshToken"
-				},
-				idToken: {
-					type: "string",
-					required: false,
-					returned: false,
-					fieldName: options.account?.fields?.idToken || "idToken"
-				},
-				accessTokenExpiresAt: {
-					type: "date",
-					required: false,
-					returned: false,
-					fieldName: options.account?.fields?.accessTokenExpiresAt || "accessTokenExpiresAt"
-				},
-				refreshTokenExpiresAt: {
-					type: "date",
-					required: false,
-					returned: false,
-					fieldName: options.account?.fields?.refreshTokenExpiresAt || "refreshTokenExpiresAt"
-				},
-				scope: {
-					type: "string",
-					required: false,
-					fieldName: options.account?.fields?.scope || "scope"
-				},
-				password: {
-					type: "string",
-					required: false,
-					returned: false,
-					fieldName: options.account?.fields?.password || "password"
-				},
-				createdAt: {
-					type: "date",
-					required: true,
-					fieldName: options.account?.fields?.createdAt || "createdAt",
-					defaultValue: () => /* @__PURE__ */ new Date()
-				},
-				updatedAt: {
-					type: "date",
-					required: true,
-					fieldName: options.account?.fields?.updatedAt || "updatedAt",
-					onUpdate: () => /* @__PURE__ */ new Date()
-				},
-				...account?.fields,
-				...options.account?.additionalFields
-			},
-			order: 3
-		},
-		...!options.secondaryStorage || options.verification?.storeInDatabase ? verificationTable : {},
-		...pluginTables,
-		...shouldAddRateLimitTable ? rateLimitTable : {}
-	};
-};
-//#endregion
 //#region node_modules/zod/v4/core/util.js
 function getEnumValues(entries) {
 	const numericValues = Object.values(entries).filter((v) => typeof v === "number");
@@ -2570,7 +1023,7 @@ function jsonStringifyReplacer(_, value) {
 	if (typeof value === "bigint") return value.toString();
 	return value;
 }
-function cached(getter) {
+function cached$1(getter) {
 	return { get value() {
 		{
 			const value = getter();
@@ -2617,10 +1070,10 @@ function slugify(input) {
 	return input.toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/[\s_-]+/g, "-").replace(/^-+|-+$/g, "");
 }
 var captureStackTrace = "captureStackTrace" in Error ? Error.captureStackTrace : (..._args) => {};
-function isObject(data) {
+function isObject$1(data) {
 	return typeof data === "object" && data !== null && !Array.isArray(data);
 }
-var allowsEval = /* @__PURE__*/ cached(() => {
+var allowsEval = /* @__PURE__*/ cached$1(() => {
 	if (globalConfig.jitless) return false;
 	if (typeof navigator !== "undefined" && navigator?.userAgent?.includes("Cloudflare")) return false;
 	try {
@@ -2631,12 +1084,12 @@ var allowsEval = /* @__PURE__*/ cached(() => {
 	}
 });
 function isPlainObject(o) {
-	if (isObject(o) === false) return false;
+	if (isObject$1(o) === false) return false;
 	const ctor = o.constructor;
 	if (ctor === void 0) return true;
 	if (typeof ctor !== "function") return true;
 	const prot = ctor.prototype;
-	if (isObject(prot) === false) return false;
+	if (isObject$1(prot) === false) return false;
 	if (Object.prototype.hasOwnProperty.call(prot, "isPrototypeOf") === false) return false;
 	return true;
 }
@@ -3442,7 +1895,7 @@ var ipv4$1 = /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:2
 var ipv6$1 = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:))$/;
 var cidrv4 = /^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\/([0-9]|[1-2][0-9]|3[0-2])$/;
 var cidrv6 = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:))\/(12[0-8]|1[01][0-9]|[1-9]?[0-9])$/;
-var base64 = /^$|^(?:[0-9a-zA-Z+/]{4})*(?:(?:[0-9a-zA-Z+/]{2}==)|(?:[0-9a-zA-Z+/]{3}=))?$/;
+var base64$1 = /^$|^(?:[0-9a-zA-Z+/]{4})*(?:(?:[0-9a-zA-Z+/]{2}==)|(?:[0-9a-zA-Z+/]{3}=))?$/;
 var base64url = /^[A-Za-z0-9_-]*$/;
 var httpProtocol = /^https?$/;
 var e164 = /^\+[1-9]\d{6,14}$/;
@@ -4234,7 +2687,7 @@ function isValidBase64(data) {
 	}
 }
 var $ZodBase64 = /*@__PURE__*/ $constructor("$ZodBase64", (inst, def) => {
-	def.pattern ?? (def.pattern = base64);
+	def.pattern ?? (def.pattern = base64$1);
 	$ZodStringFormat.init(inst, def);
 	inst._zod.bag.contentEncoding = "base64";
 	inst._zod.check = (payload) => {
@@ -4483,7 +2936,7 @@ var $ZodObject = /*@__PURE__*/ $constructor("$ZodObject", (inst, def) => {
 			return newSh;
 		} });
 	}
-	const _normalized = cached(() => normalizeDef(def));
+	const _normalized = cached$1(() => normalizeDef(def));
 	defineLazyInternal(inst, "propValues", (zod) => {
 		const shape = zod.def.shape;
 		const propValues = {};
@@ -4497,7 +2950,7 @@ var $ZodObject = /*@__PURE__*/ $constructor("$ZodObject", (inst, def) => {
 		}
 		return propValues;
 	});
-	const isObject$2 = isObject;
+	const isObject = isObject$1;
 	const catchall = def.catchall;
 	let value;
 	const memo = globalConfig.memoizer;
@@ -4505,7 +2958,7 @@ var $ZodObject = /*@__PURE__*/ $constructor("$ZodObject", (inst, def) => {
 	inst._zod.parse = (payload, ctx) => {
 		value ?? (value = _normalized.value);
 		const input = payload.value;
-		if (!isObject$2(input)) {
+		if (!isObject(input)) {
 			payload.issues.push({
 				expected: "object",
 				code: "invalid_type",
@@ -4536,7 +2989,7 @@ var $ZodObject = /*@__PURE__*/ $constructor("$ZodObject", (inst, def) => {
 var $ZodObjectJIT = /*@__PURE__*/ $constructor("$ZodObjectJIT", (inst, def) => {
 	$ZodObject.init(inst, def);
 	const superParse = inst._zod.parse;
-	const _normalized = cached(() => normalizeDef(def));
+	const _normalized = cached$1(() => normalizeDef(def));
 	const memo = globalConfig.memoizer;
 	const generateFastpass = (shape) => {
 		const normalized = _normalized.value;
@@ -4620,7 +3073,7 @@ var $ZodObjectJIT = /*@__PURE__*/ $constructor("$ZodObjectJIT", (inst, def) => {
 		return doc.compile();
 	};
 	let fastpass;
-	const isObject$3 = isObject;
+	const isObject = isObject$1;
 	const jit = !globalConfig.jitless;
 	const fastEnabled = jit && allowsEval.value;
 	const catchall = def.catchall;
@@ -4628,7 +3081,7 @@ var $ZodObjectJIT = /*@__PURE__*/ $constructor("$ZodObjectJIT", (inst, def) => {
 	inst._zod.parse = (payload, ctx) => {
 		value ?? (value = _normalized.value);
 		const input = payload.value;
-		if (!isObject$3(input)) {
+		if (!isObject(input)) {
 			payload.issues.push({
 				expected: "object",
 				code: "invalid_type",
@@ -6976,8 +5429,8 @@ var parse = /* @__PURE__ */ _parse(ZodRealError);
 var parseAsync = /* @__PURE__ */ _parseAsync(ZodRealError);
 var safeParse = /* @__PURE__ */ _safeParse(ZodRealError);
 var safeParseAsync = /* @__PURE__ */ _safeParseAsync(ZodRealError);
-var encode = /* @__PURE__ */ _encode(ZodRealError);
-var decode = /* @__PURE__ */ _decode(ZodRealError);
+var encode$2 = /* @__PURE__ */ _encode(ZodRealError);
+var decode$1 = /* @__PURE__ */ _decode(ZodRealError);
 var encodeAsync = /* @__PURE__ */ _encodeAsync(ZodRealError);
 var decodeAsync = /* @__PURE__ */ _decodeAsync(ZodRealError);
 var safeEncode = /* @__PURE__ */ _safeEncode(ZodRealError);
@@ -7122,10 +5575,10 @@ var ZodType = /*@__PURE__*/ $constructor("ZodType", (inst, def) => {
 		own(this, "spa", value);
 	},
 	encode: function _encode(data, params) {
-		return encode(this, data, params, { callee: _encode });
+		return encode$2(this, data, params, { callee: _encode });
 	},
 	decode: function _decode(data, params) {
-		return decode(this, data, params, { callee: _decode });
+		return decode$1(this, data, params, { callee: _decode });
 	},
 	encodeAsync: async function _encodeAsync(data, params) {
 		return await encodeAsync(this, data, params, { callee: _encodeAsync });
@@ -7877,6 +6330,1553 @@ function refine(fn, _params = {}) {
 function superRefine(fn, params) {
 	return /* @__PURE__ */ _superRefine(fn, params);
 }
+//#endregion
+//#region node_modules/@better-auth/utils/dist/base64.mjs
+function getAlphabet(urlSafe) {
+	return urlSafe ? "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_" : "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+}
+function base64Encode(data, alphabet, padding) {
+	let result = "";
+	let buffer = 0;
+	let shift = 0;
+	for (const byte of data) {
+		buffer = buffer << 8 | byte;
+		shift += 8;
+		while (shift >= 6) {
+			shift -= 6;
+			result += alphabet[buffer >> shift & 63];
+		}
+	}
+	if (shift > 0) result += alphabet[buffer << 6 - shift & 63];
+	if (padding) {
+		const padCount = (4 - result.length % 4) % 4;
+		result += "=".repeat(padCount);
+	}
+	return result;
+}
+function base64Decode(data, alphabet) {
+	const decodeMap = /* @__PURE__ */ new Map();
+	for (let i = 0; i < alphabet.length; i++) decodeMap.set(alphabet[i], i);
+	const result = [];
+	let buffer = 0;
+	let bitsCollected = 0;
+	for (const char of data) {
+		if (char === "=") break;
+		const value = decodeMap.get(char);
+		if (value === void 0) throw new Error(`Invalid Base64 character: ${char}`);
+		buffer = buffer << 6 | value;
+		bitsCollected += 6;
+		if (bitsCollected >= 8) {
+			bitsCollected -= 8;
+			result.push(buffer >> bitsCollected & 255);
+		}
+	}
+	return Uint8Array.from(result);
+}
+var base64 = {
+	encode(data, options = {}) {
+		const alphabet = getAlphabet(false);
+		return base64Encode(typeof data === "string" ? new TextEncoder().encode(data) : new Uint8Array(data), alphabet, options.padding ?? true);
+	},
+	decode(data) {
+		if (typeof data !== "string") data = new TextDecoder().decode(data);
+		const alphabet = getAlphabet(data.includes("-") || data.includes("_"));
+		return base64Decode(data, alphabet);
+	}
+};
+var base64Url = {
+	encode(data, options = {}) {
+		const alphabet = getAlphabet(true);
+		return base64Encode(typeof data === "string" ? new TextEncoder().encode(data) : new Uint8Array(data), alphabet, options.padding ?? true);
+	},
+	decode(data) {
+		return base64Decode(data, getAlphabet(data.includes("-") || data.includes("_")));
+	}
+};
+//#endregion
+//#region node_modules/jose/dist/webapi/lib/buffer_utils.js
+var encoder = new TextEncoder();
+var decoder = new TextDecoder();
+var strictDecoder = new TextDecoder("utf-8", { fatal: true });
+var MAX_INT32 = 2 ** 32;
+function concat(...buffers) {
+	const size = buffers.reduce((acc, { length }) => acc + length, 0);
+	const buf = new Uint8Array(size);
+	let i = 0;
+	for (const buffer of buffers) {
+		buf.set(buffer, i);
+		i += buffer.length;
+	}
+	return buf;
+}
+function writeUInt32BE(buf, value, offset) {
+	if (value < 0 || value >= MAX_INT32) throw new RangeError(`value must be >= 0 and <= ${MAX_INT32 - 1}. Received ${value}`);
+	buf.set([
+		value >>> 24,
+		value >>> 16,
+		value >>> 8,
+		value & 255
+	], offset);
+}
+function uint64be(value) {
+	const high = Math.floor(value / MAX_INT32);
+	const low = value % MAX_INT32;
+	const buf = /* @__PURE__ */ new Uint8Array(8);
+	writeUInt32BE(buf, high, 0);
+	writeUInt32BE(buf, low, 4);
+	return buf;
+}
+function uint32be(value) {
+	const buf = /* @__PURE__ */ new Uint8Array(4);
+	writeUInt32BE(buf, value);
+	return buf;
+}
+function encode$1(string) {
+	const bytes = new Uint8Array(string.length);
+	for (let i = 0; i < string.length; i++) {
+		const code = string.charCodeAt(i);
+		if (code > 127) throw new TypeError("non-ASCII string encountered in encode()");
+		bytes[i] = code;
+	}
+	return bytes;
+}
+//#endregion
+//#region node_modules/jose/dist/webapi/lib/crypto_key.js
+var unusable = (name, prop = "algorithm.name") => /* @__PURE__ */ new TypeError(`CryptoKey does not support this operation, its ${prop} must be ${name}`);
+function checkUsage(key, usage) {
+	if (usage && !key.usages.includes(usage)) throw new TypeError(`CryptoKey does not support this operation, its usages must include ${usage}.`);
+}
+function checkModulusLength(alg, key) {
+	const { modulusLength } = key.algorithm;
+	if (typeof modulusLength !== "number" || modulusLength < 2048) throw new TypeError(`${alg} requires key modulusLength to be 2048 bits or larger`);
+}
+function checkCryptoKey(key, expected, usage) {
+	const algorithm = key.algorithm;
+	if (algorithm.name !== expected.name) throw unusable(expected.name);
+	if (expected.hash && algorithm.hash?.name !== expected.hash) throw unusable(expected.hash, "algorithm.hash");
+	if (expected.namedCurve && algorithm.namedCurve !== expected.namedCurve) throw unusable(expected.namedCurve, "algorithm.namedCurve");
+	if (expected.length !== void 0 && algorithm.length !== expected.length) throw unusable(expected.length, "algorithm.length");
+	checkUsage(key, usage);
+}
+//#endregion
+//#region node_modules/jose/dist/webapi/lib/invalid_key_input.js
+function message(msg, actual, ...types) {
+	if (types.length > 2) {
+		const last = types.pop();
+		msg += `one of type ${types.join(", ")}, or ${last}.`;
+	} else if (types.length === 2) msg += `one of type ${types[0]} or ${types[1]}.`;
+	else msg += `of type ${types[0]}.`;
+	if (actual == null) msg += ` Received ${actual}`;
+	else if (typeof actual === "function" && actual.name) msg += ` Received function ${actual.name}`;
+	else if (typeof actual === "object" && actual != null) {
+		if (actual.constructor?.name) msg += ` Received an instance of ${actual.constructor.name}`;
+	}
+	return msg;
+}
+var invalidKeyInput = (actual, ...types) => message("Key must be ", actual, ...types);
+var withAlg = (alg, actual, ...types) => message(`Key for the ${alg} algorithm must be `, actual, ...types);
+//#endregion
+//#region node_modules/jose/dist/webapi/util/errors.js
+var JOSEError = class extends Error {
+	static code = "ERR_JOSE_GENERIC";
+	code = "ERR_JOSE_GENERIC";
+	constructor(message, options) {
+		super(message, options);
+		this.name = this.constructor.name;
+		Error.captureStackTrace?.(this, this.constructor);
+	}
+};
+var JWTClaimValidationFailed = class extends JOSEError {
+	static code = "ERR_JWT_CLAIM_VALIDATION_FAILED";
+	code = "ERR_JWT_CLAIM_VALIDATION_FAILED";
+	claim;
+	reason;
+	payload;
+	constructor(message, payload, claim = "unspecified", reason = "unspecified") {
+		super(message, { cause: {
+			claim,
+			reason,
+			payload
+		} });
+		this.claim = claim;
+		this.reason = reason;
+		this.payload = payload;
+	}
+};
+var JWTExpired = class extends JOSEError {
+	static code = "ERR_JWT_EXPIRED";
+	code = "ERR_JWT_EXPIRED";
+	claim;
+	reason;
+	payload;
+	constructor(message, payload, claim = "unspecified", reason = "unspecified") {
+		super(message, { cause: {
+			claim,
+			reason,
+			payload
+		} });
+		this.claim = claim;
+		this.reason = reason;
+		this.payload = payload;
+	}
+};
+var JOSEAlgNotAllowed = class extends JOSEError {
+	static code = "ERR_JOSE_ALG_NOT_ALLOWED";
+	code = "ERR_JOSE_ALG_NOT_ALLOWED";
+};
+var JOSENotSupported = class extends JOSEError {
+	static code = "ERR_JOSE_NOT_SUPPORTED";
+	code = "ERR_JOSE_NOT_SUPPORTED";
+};
+var JWEDecryptionFailed = class extends JOSEError {
+	static code = "ERR_JWE_DECRYPTION_FAILED";
+	code = "ERR_JWE_DECRYPTION_FAILED";
+	constructor(message = "decryption operation failed", options) {
+		super(message, options);
+	}
+};
+var JWEInvalid = class extends JOSEError {
+	static code = "ERR_JWE_INVALID";
+	code = "ERR_JWE_INVALID";
+};
+var JWSInvalid = class extends JOSEError {
+	static code = "ERR_JWS_INVALID";
+	code = "ERR_JWS_INVALID";
+};
+var JWTInvalid = class extends JOSEError {
+	static code = "ERR_JWT_INVALID";
+	code = "ERR_JWT_INVALID";
+};
+var JWKInvalid = class extends JOSEError {
+	static code = "ERR_JWK_INVALID";
+	code = "ERR_JWK_INVALID";
+};
+var JWKSInvalid = class extends JOSEError {
+	static code = "ERR_JWKS_INVALID";
+	code = "ERR_JWKS_INVALID";
+};
+var JWKSNoMatchingKey = class extends JOSEError {
+	static code = "ERR_JWKS_NO_MATCHING_KEY";
+	code = "ERR_JWKS_NO_MATCHING_KEY";
+	constructor(message = "no applicable key found in the JSON Web Key Set", options) {
+		super(message, options);
+	}
+};
+var JWKSMultipleMatchingKeys = class extends JOSEError {
+	[Symbol.asyncIterator] = async function* () {};
+	static code = "ERR_JWKS_MULTIPLE_MATCHING_KEYS";
+	code = "ERR_JWKS_MULTIPLE_MATCHING_KEYS";
+	constructor(message = "multiple matching keys found in the JSON Web Key Set", options) {
+		super(message, options);
+	}
+};
+var JWKSTimeout = class extends JOSEError {
+	static code = "ERR_JWKS_TIMEOUT";
+	code = "ERR_JWKS_TIMEOUT";
+	constructor(message = "request timed out", options) {
+		super(message, options);
+	}
+};
+var JWSSignatureVerificationFailed = class extends JOSEError {
+	static code = "ERR_JWS_SIGNATURE_VERIFICATION_FAILED";
+	code = "ERR_JWS_SIGNATURE_VERIFICATION_FAILED";
+	constructor(message = "signature verification failed", options) {
+		super(message, options);
+	}
+};
+//#endregion
+//#region node_modules/jose/dist/webapi/lib/is_key_like.js
+function assertCryptoKey(key) {
+	if (!isCryptoKey(key)) throw new Error("CryptoKey instance expected");
+}
+var isCryptoKey = (key) => {
+	if (key?.[Symbol.toStringTag] === "CryptoKey") return true;
+	try {
+		return key instanceof CryptoKey;
+	} catch {
+		return false;
+	}
+};
+var isKeyObject = (key) => key?.[Symbol.toStringTag] === "KeyObject";
+var isKeyLike = (key) => isCryptoKey(key) || isKeyObject(key);
+//#endregion
+//#region node_modules/jose/dist/webapi/lib/base64.js
+function encodeBase64(input) {
+	if (Uint8Array.prototype.toBase64) return input.toBase64();
+	const CHUNK_SIZE = 32768;
+	const arr = [];
+	for (let i = 0; i < input.length; i += CHUNK_SIZE) arr.push(String.fromCharCode.apply(null, input.subarray(i, i + CHUNK_SIZE)));
+	return btoa(arr.join(""));
+}
+function decodeBase64(encoded) {
+	if (Uint8Array.fromBase64) return Uint8Array.fromBase64(encoded);
+	const binary = atob(encoded);
+	const bytes = new Uint8Array(binary.length);
+	for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+	return bytes;
+}
+//#endregion
+//#region node_modules/jose/dist/webapi/util/base64url.js
+var invalid = "The input to be decoded is not correctly encoded.";
+function decode(input) {
+	if (Uint8Array.fromBase64) try {
+		return Uint8Array.fromBase64(typeof input === "string" ? input : decoder.decode(input), { alphabet: "base64url" });
+	} catch (cause) {
+		throw new TypeError(invalid, { cause });
+	}
+	let encoded = input;
+	if (encoded instanceof Uint8Array) encoded = decoder.decode(encoded);
+	if (encoded.includes("+") || encoded.includes("/")) throw new TypeError(invalid);
+	encoded = encoded.replace(/-/g, "+").replace(/_/g, "/");
+	try {
+		return decodeBase64(encoded);
+	} catch {
+		throw new TypeError(invalid);
+	}
+}
+function encode(input) {
+	let unencoded = input;
+	if (typeof unencoded === "string") unencoded = encoder.encode(unencoded);
+	if (Uint8Array.prototype.toBase64) return unencoded.toBase64({
+		alphabet: "base64url",
+		omitPadding: true
+	});
+	return encodeBase64(unencoded).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+//#endregion
+//#region node_modules/jose/dist/webapi/lib/type_checks.js
+function isObject(input) {
+	if (typeof input !== "object" || input === null || Object.prototype.toString.call(input) !== "[object Object]") return false;
+	const prototype = Object.getPrototypeOf(input);
+	if (prototype === null) return true;
+	let proto = prototype;
+	while (Object.getPrototypeOf(proto) !== null) proto = Object.getPrototypeOf(proto);
+	return prototype === proto;
+}
+function isDisjoint(...headers) {
+	const parameters = /* @__PURE__ */ new Set();
+	for (const header of headers) {
+		if (!header) continue;
+		for (const parameter of Object.keys(header)) {
+			if (parameters.has(parameter)) return false;
+			parameters.add(parameter);
+		}
+	}
+	return true;
+}
+var isJWK = (key) => isObject(key) && typeof key.kty === "string";
+var isPrivateJWK = (key) => key.kty !== "oct" && (key.kty === "AKP" && typeof key.priv === "string" || typeof key.d === "string");
+var isPublicJWK = (key) => key.kty !== "oct" && key.d === void 0 && key.priv === void 0;
+var isSecretJWK = (key) => key.kty === "oct" && typeof key.k === "string";
+//#endregion
+//#region node_modules/jose/dist/webapi/lib/helpers.js
+var unprotected = Symbol();
+function assertNotSet(value, name) {
+	if (value) throw new TypeError(`${name} can only be called once`);
+}
+function decodeBase64url(value, label, ErrorClass) {
+	try {
+		return decode(value);
+	} catch {
+		throw new ErrorClass(`Failed to base64url decode the ${label}`);
+	}
+}
+function encodeBase64url(value, label, ErrorClass) {
+	try {
+		return encode$1(value);
+	} catch {
+		throw new ErrorClass(`The ${label} is not a valid base64url string`);
+	}
+}
+async function digest(algorithm, data) {
+	const subtleDigest = `SHA-${algorithm.slice(-3)}`;
+	return new Uint8Array(await crypto.subtle.digest(subtleDigest, data));
+}
+function parseJoseHeader(b64, ErrorClass, message) {
+	let parsed;
+	try {
+		parsed = JSON.parse(strictDecoder.decode(decode(b64)));
+	} catch {
+		throw new ErrorClass(message);
+	}
+	if (!isObject(parsed)) throw new ErrorClass(message);
+	return parsed;
+}
+//#endregion
+//#region node_modules/jose/dist/webapi/lib/jwk_to_key.js
+async function jwkToKey(entry, jwk) {
+	if (jwk.kty === "RSA" && "oth" in jwk && jwk.oth !== void 0) throw new JOSENotSupported("RSA JWK \"oth\" (Other Primes Info) Parameter value is not supported");
+	if (!entry.kty.includes(jwk.kty)) throw new JOSENotSupported("Invalid or unsupported JWK \"alg\" (Algorithm) Parameter value");
+	const algorithm = entry.resolve?.({
+		kty: jwk.kty,
+		crv: jwk.crv
+	}) ?? entry.subtle;
+	const isPrivate = !!(jwk.d || jwk.priv);
+	const keyData = { ...jwk };
+	if (keyData.kty !== "AKP") delete keyData.alg;
+	delete keyData.use;
+	return crypto.subtle.importKey("jwk", keyData, algorithm, jwk.ext ?? !isPrivate, jwk.key_ops ?? entry.usages[isPrivate ? 1 : 0]);
+}
+//#endregion
+//#region node_modules/jose/dist/webapi/lib/key.js
+var tag = (key) => key[Symbol.toStringTag];
+var jwkMatchesOp = (entry, key, usage) => {
+	const { alg } = entry;
+	if (key.use !== void 0) {
+		const expected = usage === "sign" || usage === "verify" ? "sig" : "enc";
+		if (key.use !== expected) throw new TypeError(`Invalid key for this operation, its "use" must be "${expected}" when present`);
+	}
+	if (key.alg !== void 0 && key.alg !== alg) throw new TypeError(`Invalid key for this operation, its "alg" must be "${alg}" when present`);
+	if (Array.isArray(key.key_ops)) {
+		const expectedKeyOp = usage === "encrypt" || usage === "decrypt" ? entry.ops?.[usage === "encrypt" ? 0 : 1] : usage;
+		if (expectedKeyOp && !key.key_ops.includes(expectedKeyOp)) throw new TypeError(`Invalid key for this operation, its "key_ops" must include "${expectedKeyOp}" when present`);
+	}
+};
+function checkKeyType(entry, key, usage) {
+	const { alg, secret } = entry;
+	const privateKey = usage === "decrypt" || usage === "sign";
+	if (secret && key instanceof Uint8Array) return [BYTES, key];
+	if (isJWK(key)) {
+		if (secret ? !isSecretJWK(key) : !(privateKey ? isPrivateJWK(key) : isPublicJWK(key))) throw new TypeError(secret ? `JSON Web Key for symmetric algorithms must have JWK "kty" (Key Type) equal to "oct" and the JWK "k" (Key Value) present` : `JSON Web Key for this operation must be a ${privateKey ? "private" : "public"} JWK`);
+		jwkMatchesOp(entry, key, usage);
+		return [JWK, key];
+	}
+	if (!isKeyLike(key)) throw new TypeError(secret ? withAlg(alg, key, "CryptoKey", "KeyObject", "JSON Web Key", "Uint8Array") : withAlg(alg, key, "CryptoKey", "KeyObject", "JSON Web Key"));
+	if (secret) {
+		if (key.type !== "secret") throw new TypeError(`${tag(key)} instances for symmetric algorithms must be of type "secret"`);
+	} else {
+		if (key.type === "secret") throw new TypeError(`${tag(key)} instances for asymmetric algorithms must not be of type "secret"`);
+		const expectedType = privateKey ? "private" : "public";
+		if ((key.type === "public" || key.type === "private") && key.type !== expectedType) {
+			const operation = usage === "sign" ? "signing" : usage === "verify" ? "verifying" : `${usage.slice(0, -1)}tion`;
+			throw new TypeError(`${tag(key)} instances for asymmetric algorithm ${operation} must be of type "${expectedType}"`);
+		}
+	}
+	return isCryptoKey(key) ? [CRYPTO, key] : [KEYOBJECT, key];
+}
+var BYTES = 0;
+var CRYPTO = 1;
+var KEYOBJECT = 2;
+var JWK = 3;
+var cache;
+var nist = {
+	__proto__: null,
+	prime256v1: "P-256",
+	secp384r1: "P-384",
+	secp521r1: "P-521"
+};
+function cached(key, alg, value) {
+	cache ||= /* @__PURE__ */ new WeakMap();
+	const entry = cache.get(key);
+	if (value) {
+		if (entry) entry[alg] = value;
+		else cache.set(key, {
+			__proto__: null,
+			[alg]: value
+		});
+	}
+	return value ?? entry?.[alg];
+}
+var handleJWK = async (key, jwk, entry) => cached(key, entry.alg) ?? cached(key, entry.alg, await jwkToKey(entry, {
+	...jwk,
+	alg: entry.alg
+}));
+var handleKeyObject = (keyObject, entry) => {
+	const hit = cached(keyObject, entry.alg);
+	if (hit) return hit;
+	const isPublic = keyObject.type === "public";
+	const usages = entry.usages[isPublic ? 0 : 1];
+	const { asymmetricKeyType } = keyObject;
+	const crv = nist[keyObject.asymmetricKeyDetails?.namedCurve];
+	const params = entry.resolve?.({
+		crv,
+		asymmetricKeyType
+	}) ?? entry.subtle;
+	return cached(keyObject, entry.alg, keyObject.toCryptoKey(params, isPublic, usages));
+};
+async function prepareKey(entry, key, usage) {
+	const tagged = checkKeyType(entry, key, usage);
+	switch (tagged[0]) {
+		case BYTES:
+		case CRYPTO: return tagged[1];
+		case JWK: {
+			const key = tagged[1];
+			if (key.k) return decode(key.k);
+			if (!Object.isFrozen(key)) {
+				const { key_ops } = key;
+				if (Array.isArray(key_ops)) Object.freeze(key_ops);
+				Object.freeze(key);
+			}
+			return handleJWK(key, key, entry);
+		}
+		case KEYOBJECT: {
+			const keyObject = tagged[1];
+			if (keyObject.type === "secret") return keyObject.export();
+			if ("toCryptoKey" in keyObject && typeof keyObject.toCryptoKey === "function") return handleKeyObject(keyObject, entry);
+			return handleJWK(keyObject, keyObject.export({ format: "jwk" }), entry);
+		}
+	}
+}
+//#endregion
+//#region node_modules/jose/dist/webapi/lib/key_descriptor.js
+function table(entries) {
+	const out = { __proto__: null };
+	for (const alg in entries) out[alg] = {
+		...entries[alg],
+		alg
+	};
+	return out;
+}
+//#endregion
+//#region node_modules/jose/dist/webapi/lib/jwe_algorithms.js
+var wrap = [["encrypt", "wrapKey"], ["decrypt", "unwrapKey"]];
+var derive = [[], ["deriveBits"]];
+var none = [[], []];
+function rsaes(bits) {
+	return {
+		kty: ["RSA"],
+		subtle: {
+			name: "RSA-OAEP",
+			hash: `SHA-${bits}`
+		},
+		usages: wrap,
+		ops: ["wrapKey", "unwrapKey"]
+	};
+}
+function ecdh() {
+	return {
+		kty: ["EC", "OKP"],
+		subtle: { name: "ECDH" },
+		resolve: ({ kty, crv, asymmetricKeyType }) => {
+			if (crv === "X25519" || asymmetricKeyType === "x25519") return { name: "X25519" };
+			if (kty === "OKP") throw new JOSENotSupported("Invalid or unsupported JWK \"alg\" (Algorithm) Parameter value");
+			return {
+				name: "ECDH",
+				namedCurve: crv
+			};
+		},
+		usages: derive,
+		ops: [void 0, "deriveBits"]
+	};
+}
+function aeskw(bits, gcm = false) {
+	return {
+		kty: ["oct"],
+		secret: true,
+		subtle: {
+			name: gcm ? "AES-GCM" : "AES-KW",
+			length: bits
+		},
+		usages: none,
+		ops: gcm ? ["encrypt", "decrypt"] : ["wrapKey", "unwrapKey"]
+	};
+}
+function pbes2() {
+	return {
+		kty: ["oct"],
+		secret: true,
+		subtle: { name: "PBKDF2" },
+		usages: none,
+		ops: ["deriveBits", "deriveBits"]
+	};
+}
+var JWE = table({
+	dir: {
+		kty: ["oct"],
+		secret: true,
+		subtle: { name: "AES-GCM" },
+		usages: none,
+		ops: ["encrypt", "decrypt"]
+	},
+	"RSA-OAEP": rsaes(1),
+	"RSA-OAEP-256": rsaes(256),
+	"RSA-OAEP-384": rsaes(384),
+	"RSA-OAEP-512": rsaes(512),
+	"ECDH-ES": ecdh(),
+	"ECDH-ES+A128KW": ecdh(),
+	"ECDH-ES+A192KW": ecdh(),
+	"ECDH-ES+A256KW": ecdh(),
+	A128KW: aeskw(128),
+	A192KW: aeskw(192),
+	A256KW: aeskw(256),
+	A128GCMKW: aeskw(128, true),
+	A192GCMKW: aeskw(192, true),
+	A256GCMKW: aeskw(256, true),
+	"PBES2-HS256+A128KW": pbes2(),
+	"PBES2-HS384+A192KW": pbes2(),
+	"PBES2-HS512+A256KW": pbes2()
+});
+var contentOps = ["encrypt", "decrypt"];
+function contentEncryption(bits, cbc = false) {
+	return {
+		kty: ["oct"],
+		secret: true,
+		subtle: {
+			name: cbc ? "AES-CBC" : "AES-GCM",
+			length: bits
+		},
+		usages: none,
+		ops: contentOps,
+		cekBits: bits,
+		ivBits: cbc ? 128 : 96,
+		cbc
+	};
+}
+var ENC = table({
+	A128GCM: contentEncryption(128),
+	A192GCM: contentEncryption(192),
+	A256GCM: contentEncryption(256),
+	"A128CBC-HS256": contentEncryption(256, true),
+	"A192CBC-HS384": contentEncryption(384, true),
+	"A256CBC-HS512": contentEncryption(512, true)
+});
+function unsupported(parameter, name) {
+	throw new JOSENotSupported(`Invalid or unsupported "${parameter}" (JWE ${name}) header value`);
+}
+function jweAlgorithm(alg) {
+	return (typeof alg === "string" ? JWE[alg] : void 0) ?? unsupported("alg", "Algorithm");
+}
+function jweEncryption(enc) {
+	return (typeof enc === "string" ? ENC[enc] : void 0) ?? unsupported("enc", "Encryption Algorithm");
+}
+//#endregion
+//#region node_modules/jose/dist/webapi/lib/options.js
+var JWS_RECOGNIZED = {
+	__proto__: null,
+	b64: true
+};
+var JWE_RECOGNIZED = { __proto__: null };
+function validateAlgorithms(option, algorithms) {
+	if (algorithms !== void 0 && (!Array.isArray(algorithms) || algorithms.some((s) => typeof s !== "string"))) throw new TypeError(`"${option}" option must be an array of strings`);
+	if (!algorithms) return;
+	return new Set(algorithms);
+}
+function validateCritDuplicates(Err, protectedHeader) {
+	const { crit } = protectedHeader ?? {};
+	if (Array.isArray(crit) && new Set(crit).size !== crit.length) throw new Err("\"crit\" (Critical) Header Parameter MUST NOT contain duplicate values");
+}
+function validateCrit(Err, recognizedDefault, recognizedOption, protectedHeader, joseHeader) {
+	if (joseHeader.crit !== void 0 && protectedHeader?.crit === void 0) throw new Err("\"crit\" (Critical) Header Parameter MUST be integrity protected");
+	if (!protectedHeader || protectedHeader.crit === void 0) return [];
+	if (!Array.isArray(protectedHeader.crit) || protectedHeader.crit.length === 0 || protectedHeader.crit.some((input) => typeof input !== "string" || input.length === 0)) throw new Err("\"crit\" (Critical) Header Parameter MUST be an array of non-empty strings when present");
+	const recognized = recognizedOption === void 0 ? recognizedDefault : {
+		__proto__: null,
+		...recognizedOption,
+		...recognizedDefault
+	};
+	for (const parameter of protectedHeader.crit) {
+		if (!(parameter in recognized)) throw new JOSENotSupported(`Extension Header Parameter "${parameter}" is not recognized`);
+		if (!Object.hasOwn(joseHeader, parameter) || joseHeader[parameter] === void 0) throw new Err(`Extension Header Parameter "${parameter}" is missing`);
+		if (recognized[parameter] && (!Object.hasOwn(protectedHeader, parameter) || protectedHeader[parameter] === void 0)) throw new Err(`Extension Header Parameter "${parameter}" MUST be integrity protected`);
+	}
+	return protectedHeader.crit;
+}
+//#endregion
+//#region node_modules/jose/dist/webapi/lib/signing.js
+async function getSigKey(entry, key, usage) {
+	if (key instanceof Uint8Array) return crypto.subtle.importKey("raw", key, entry.subtle, false, [usage]);
+	checkCryptoKey(key, entry.subtle, usage);
+	if (entry.minRsaBits) checkModulusLength(entry.alg, key);
+	return key;
+}
+async function sign(entry, key, data) {
+	const cryptoKey = await getSigKey(entry, key, "sign");
+	const signature = await crypto.subtle.sign(entry.signing, cryptoKey, data);
+	return new Uint8Array(signature);
+}
+async function verify(entry, key, signature, data) {
+	const cryptoKey = await getSigKey(entry, key, "verify");
+	try {
+		return await crypto.subtle.verify(entry.signing, cryptoKey, signature, data);
+	} catch {
+		return false;
+	}
+}
+//#endregion
+//#region node_modules/jose/dist/webapi/lib/jws_algorithms.js
+var sig = [["verify"], ["sign"]];
+function hmac(bits) {
+	const subtle = {
+		name: "HMAC",
+		hash: `SHA-${bits}`
+	};
+	return {
+		kty: ["oct"],
+		secret: true,
+		subtle,
+		signing: subtle,
+		usages: sig
+	};
+}
+function rsa(bits, saltLength) {
+	const subtle = {
+		name: saltLength ? "RSA-PSS" : "RSASSA-PKCS1-v1_5",
+		hash: `SHA-${bits}`
+	};
+	return {
+		kty: ["RSA"],
+		subtle,
+		signing: saltLength ? {
+			...subtle,
+			saltLength
+		} : subtle,
+		usages: sig,
+		minRsaBits: 2048
+	};
+}
+function ecdsa(crv, bits) {
+	return {
+		kty: ["EC"],
+		crv,
+		subtle: {
+			name: "ECDSA",
+			namedCurve: crv
+		},
+		signing: {
+			name: "ECDSA",
+			hash: `SHA-${bits}`
+		},
+		usages: sig
+	};
+}
+function eddsa() {
+	const subtle = { name: "Ed25519" };
+	return {
+		kty: ["OKP"],
+		crv: "Ed25519",
+		subtle,
+		signing: subtle,
+		usages: sig
+	};
+}
+function mldsa(bits) {
+	const subtle = { name: `ML-DSA-${bits}` };
+	return {
+		kty: ["AKP"],
+		subtle,
+		signing: subtle,
+		usages: sig
+	};
+}
+var JWS = table({
+	HS256: hmac(256),
+	HS384: hmac(384),
+	HS512: hmac(512),
+	RS256: rsa(256),
+	RS384: rsa(384),
+	RS512: rsa(512),
+	PS256: rsa(256, 32),
+	PS384: rsa(384, 48),
+	PS512: rsa(512, 64),
+	ES256: ecdsa("P-256", 256),
+	ES384: ecdsa("P-384", 384),
+	ES512: ecdsa("P-521", 512),
+	EdDSA: eddsa(),
+	Ed25519: eddsa(),
+	"ML-DSA-44": mldsa(44),
+	"ML-DSA-65": mldsa(65),
+	"ML-DSA-87": mldsa(87)
+});
+function jwsAlgorithm(alg) {
+	const entry = typeof alg === "string" ? JWS[alg] : void 0;
+	if (!entry) throw new JOSENotSupported(`alg ${alg} is not supported either by JOSE or your javascript runtime`);
+	return entry;
+}
+//#endregion
+//#region node_modules/jose/dist/webapi/lib/jws_verify.js
+function prepareVerify(options) {
+	return [options && validateAlgorithms("algorithms", options.algorithms), options?.crit];
+}
+async function verifySignature$1(jws, shared, key) {
+	const { protected: encodedProtected, header, payload: inputPayload } = jws;
+	let parsedProt = {};
+	if (encodedProtected) parsedProt = parseJoseHeader(encodedProtected, JWSInvalid, "JWS Protected Header is invalid");
+	let joseHeader;
+	if (header !== void 0) {
+		if (!isDisjoint(parsedProt, header)) throw new JWSInvalid("JWS Protected and JWS Unprotected Header Parameter names must be disjoint");
+		joseHeader = {
+			...parsedProt,
+			...header
+		};
+	} else joseHeader = parsedProt;
+	const extensions = validateCrit(JWSInvalid, JWS_RECOGNIZED, shared[1], parsedProt, joseHeader);
+	let b64 = true;
+	if (extensions.includes("b64")) {
+		b64 = parsedProt.b64;
+		if (typeof b64 !== "boolean") throw new JWSInvalid("The \"b64\" (base64url-encode payload) Header Parameter must be a boolean");
+	}
+	const { alg } = joseHeader;
+	if (typeof alg !== "string" || !alg) throw new JWSInvalid("JWS \"alg\" (Algorithm) Header Parameter missing or invalid");
+	if (shared[0] && !shared[0].has(alg)) throw new JOSEAlgNotAllowed("\"alg\" (Algorithm) Header Parameter value not allowed");
+	if (b64) {
+		if (typeof inputPayload !== "string") throw new JWSInvalid("JWS Payload must be a string");
+	} else if (typeof inputPayload !== "string" && !(inputPayload instanceof Uint8Array)) throw new JWSInvalid("JWS Payload must be a string or an Uint8Array instance");
+	let resolvedKey = false;
+	if (typeof key === "function") {
+		key = await key(parsedProt, jws);
+		resolvedKey = true;
+	}
+	const entry = jwsAlgorithm(alg);
+	const data = concat(encodedProtected !== void 0 ? encode$1(encodedProtected) : /* @__PURE__ */ new Uint8Array(), encode$1("."), typeof inputPayload === "string" ? b64 ? shared[2] ??= encodeBase64url(inputPayload, "payload", JWSInvalid) : encoder.encode(inputPayload) : inputPayload);
+	const signature = decodeBase64url(jws.signature, "signature", JWSInvalid);
+	const k = await prepareKey(entry, key, "verify");
+	if (!await verify(entry, k, signature, data)) throw new JWSSignatureVerificationFailed();
+	let payload;
+	if (b64) payload = decodeBase64url(inputPayload, "payload", JWSInvalid);
+	else if (typeof inputPayload === "string") payload = encoder.encode(inputPayload);
+	else payload = inputPayload;
+	return [
+		payload,
+		parsedProt,
+		b64,
+		k,
+		resolvedKey
+	];
+}
+async function verifyCompact(jws, shared, key) {
+	if (jws instanceof Uint8Array) jws = decoder.decode(jws);
+	if (typeof jws !== "string") throw new JWSInvalid("Compact JWS must be a string or Uint8Array");
+	const { 0: protectedHeader, 1: payload, 2: signature, length } = jws.split(".");
+	if (length !== 3) throw new JWSInvalid("Invalid Compact JWS");
+	return verifySignature$1({
+		payload,
+		protected: protectedHeader,
+		signature
+	}, shared, key);
+}
+//#endregion
+//#region node_modules/jose/dist/webapi/lib/jwt_claims_set.js
+var epoch = (date) => Math.floor(date.getTime() / 1e3);
+var multipliers = {
+	s: 1,
+	m: 60,
+	h: 3600,
+	d: 86400,
+	w: 604800,
+	y: 31557600
+};
+var REGEX = /^(\+|\-)? ?(\d+|\d+\.\d+) ?(seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d|weeks?|w|years?|yrs?|y)(?: (ago|from now))?$/i;
+var checkFailed = "check_failed";
+function secs(str) {
+	const matched = REGEX.exec(str);
+	if (!matched || matched[4] && matched[1]) throw new TypeError("Invalid time period format");
+	const value = parseFloat(matched[2]);
+	const numericDate = Math.round(value * multipliers[matched[3][0].toLowerCase()]);
+	if (matched[1] === "-" || matched[4] === "ago") return -numericDate;
+	return numericDate;
+}
+function validateInput(label, input) {
+	if (!Number.isFinite(input)) throw new TypeError(`Invalid ${label} input`);
+	return input;
+}
+function numericDate(value, label) {
+	if (typeof value === "number") return validateInput(label, value);
+	if (value instanceof Date) return validateInput(label, epoch(value));
+	return epoch(/* @__PURE__ */ new Date()) + secs(value);
+}
+var normalizeTyp = (value) => {
+	if (value.includes("/")) return value.toLowerCase();
+	return `application/${value.toLowerCase()}`;
+};
+var checkAudiencePresence = (audPayload, audOption) => {
+	if (typeof audPayload === "string") return audOption.includes(audPayload);
+	if (Array.isArray(audPayload)) return audOption.some((aud) => audPayload.includes(aud));
+	return false;
+};
+function validateNumericDate(payload, claim, required = false) {
+	const value = payload[claim];
+	if (value === void 0 && !required) return void 0;
+	if (typeof value !== "number") throw new JWTClaimValidationFailed(`"${claim}" claim must be a number`, payload, claim, "invalid");
+	return value;
+}
+function unexpectedClaim(payload, claim) {
+	throw new JWTClaimValidationFailed(`unexpected "${claim}" claim value`, payload, claim, checkFailed);
+}
+function validateClaimsSet(protectedHeader, encodedPayload, options = {}) {
+	let payload;
+	try {
+		payload = JSON.parse(strictDecoder.decode(encodedPayload));
+	} catch {}
+	if (!isObject(payload)) throw new JWTInvalid("JWT Claims Set must be a top-level JSON object");
+	const { typ } = options;
+	if (typ && (typeof protectedHeader.typ !== "string" || normalizeTyp(protectedHeader.typ) !== normalizeTyp(typ))) throw new JWTClaimValidationFailed("unexpected \"typ\" JWT header value", payload, "typ", checkFailed);
+	const { requiredClaims = [], issuer, subject, audience, maxTokenAge } = options;
+	const presenceCheck = [...requiredClaims];
+	if (maxTokenAge !== void 0) presenceCheck.push("iat");
+	if (audience !== void 0) presenceCheck.push("aud");
+	if (subject !== void 0) presenceCheck.push("sub");
+	if (issuer !== void 0) presenceCheck.push("iss");
+	for (const claim of new Set(presenceCheck.reverse())) if (!Object.hasOwn(payload, claim)) throw new JWTClaimValidationFailed(`missing required "${claim}" claim`, payload, claim, "missing");
+	if (issuer !== void 0 && !(Array.isArray(issuer) ? issuer : [issuer]).includes(payload.iss)) unexpectedClaim(payload, "iss");
+	if (subject !== void 0 && payload.sub !== subject) unexpectedClaim(payload, "sub");
+	if (audience !== void 0 && !checkAudiencePresence(payload.aud, typeof audience === "string" ? [audience] : audience)) unexpectedClaim(payload, "aud");
+	const { clockTolerance } = options;
+	let tolerance = 0;
+	if (typeof clockTolerance === "string") tolerance = secs(clockTolerance);
+	else if (clockTolerance !== void 0) {
+		if (typeof clockTolerance !== "number") throw new TypeError("Invalid clockTolerance option type");
+		tolerance = clockTolerance;
+	}
+	validateInput("clockTolerance option", tolerance);
+	const { currentDate } = options;
+	const now = validateInput("currentDate option", epoch(currentDate || /* @__PURE__ */ new Date()));
+	const iat = validateNumericDate(payload, "iat", maxTokenAge !== void 0);
+	const nbf = validateNumericDate(payload, "nbf");
+	if (nbf !== void 0) {
+		if (nbf > now + tolerance) throw new JWTClaimValidationFailed("\"nbf\" claim timestamp check failed", payload, "nbf", checkFailed);
+	}
+	const exp = validateNumericDate(payload, "exp");
+	if (exp !== void 0) {
+		if (exp <= now - tolerance) throw new JWTExpired("\"exp\" claim timestamp check failed", payload, "exp", checkFailed);
+	}
+	if (maxTokenAge !== void 0) {
+		const age = now - iat;
+		const max = typeof maxTokenAge === "number" ? maxTokenAge : secs(maxTokenAge);
+		if (age - tolerance > max) throw new JWTExpired("\"iat\" claim timestamp check failed (too far in the past)", payload, "iat", checkFailed);
+		if (age < 0 - tolerance) throw new JWTClaimValidationFailed("\"iat\" claim timestamp check failed (it should be in the past)", payload, "iat", checkFailed);
+	}
+	return payload;
+}
+var JWTClaimsBuilder = class {
+	#payload;
+	constructor(payload) {
+		if (!isObject(payload)) throw new TypeError("JWT Claims Set MUST be an object");
+		this.#payload = structuredClone(payload);
+	}
+	data() {
+		return encoder.encode(JSON.stringify(this.#payload));
+	}
+	get iss() {
+		return this.#payload.iss;
+	}
+	set iss(value) {
+		this.#payload.iss = value;
+	}
+	get sub() {
+		return this.#payload.sub;
+	}
+	set sub(value) {
+		this.#payload.sub = value;
+	}
+	get aud() {
+		return this.#payload.aud;
+	}
+	set aud(value) {
+		this.#payload.aud = value;
+	}
+	set jti(value) {
+		this.#payload.jti = value;
+	}
+	set nbf(value) {
+		this.#payload.nbf = numericDate(value, "setNotBefore");
+	}
+	set exp(value) {
+		this.#payload.exp = numericDate(value, "setExpirationTime");
+	}
+	set iat(value) {
+		if (value === void 0) this.#payload.iat = epoch(/* @__PURE__ */ new Date());
+		else if (typeof value === "string") this.#payload.iat = validateInput("setIssuedAt", epoch(/* @__PURE__ */ new Date()) + secs(value));
+		else this.#payload.iat = numericDate(value, "setIssuedAt");
+	}
+};
+//#endregion
+//#region node_modules/jose/dist/webapi/jwt/verify.js
+async function jwtVerify(jwt, key, options) {
+	const verified = await verifyCompact(jwt, prepareVerify(options), key);
+	if (!verified[2]) throw new JWTInvalid("JWTs MUST NOT use unencoded payload");
+	const result = {
+		payload: validateClaimsSet(verified[1], verified[0], options),
+		protectedHeader: verified[1]
+	};
+	if (typeof key === "function") return {
+		...result,
+		key: verified[3]
+	};
+	return result;
+}
+//#endregion
+//#region node_modules/jose/dist/webapi/lib/key_algorithm.js
+function unsupportedAlg(source = "JWK \"alg\" (Algorithm) Parameter") {
+	throw new JOSENotSupported(`Invalid or unsupported ${source} value`);
+}
+function keyAlgorithm(alg, source) {
+	return (typeof alg === "string" ? JWS[alg] ?? JWE[alg] : void 0) ?? unsupportedAlg(source);
+}
+//#endregion
+//#region node_modules/jose/dist/webapi/jwks/local.js
+function signatureAlgorithm(alg) {
+	const entry = typeof alg === "string" ? JWS[alg] : void 0;
+	if (!entry || entry.secret) throw new JOSENotSupported("Unsupported \"alg\" value for a JSON Web Key Set");
+	return entry;
+}
+function isJWKSLike(jwks) {
+	if (!jwks || typeof jwks !== "object") return false;
+	const { keys } = jwks;
+	return Array.isArray(keys) && keys.every(isObject);
+}
+var LocalJWKSetImpl = class {
+	#jwks;
+	#cached = /* @__PURE__ */ new WeakMap();
+	constructor(jwks) {
+		if (!isJWKSLike(jwks)) throw new JWKSInvalid("JSON Web Key Set malformed");
+		this.#jwks = structuredClone(jwks);
+	}
+	jwks() {
+		return this.#jwks;
+	}
+	async getKey(protectedHeader, token) {
+		const { alg, kid } = {
+			...protectedHeader,
+			...token?.header
+		};
+		const entry = signatureAlgorithm(alg);
+		const candidates = this.#jwks.keys.filter((jwk) => entry.kty.includes(jwk.kty) && (typeof kid !== "string" || kid === jwk.kid) && (!(typeof jwk.alg === "string" || jwk.kty === "AKP") || alg === jwk.alg) && (typeof jwk.use !== "string" || jwk.use === "sig") && (!Array.isArray(jwk.key_ops) || jwk.key_ops.includes("verify")) && (!entry.crv || jwk.crv === entry.crv));
+		const { 0: jwk, length } = candidates;
+		if (length === 0) throw new JWKSNoMatchingKey();
+		if (length !== 1) {
+			const error = new JWKSMultipleMatchingKeys();
+			const _cached = this.#cached;
+			error[Symbol.asyncIterator] = async function* () {
+				for (const jwk of candidates) try {
+					yield await importWithAlgCache(_cached, jwk, entry);
+				} catch {}
+			};
+			throw error;
+		}
+		return importWithAlgCache(this.#cached, jwk, entry);
+	}
+};
+async function importWithAlgCache(cache, jwk, entry) {
+	const cached = cache.get(jwk) || cache.set(jwk, { __proto__: null }).get(jwk);
+	if (cached[entry.alg] === void 0) {
+		const key = await jwkToKey(entry, {
+			...jwk,
+			alg: entry.alg,
+			ext: true
+		});
+		if (key.type !== "public") throw new JWKSInvalid("JSON Web Key Set members must be public keys");
+		cached[entry.alg] = key;
+	}
+	return cached[entry.alg];
+}
+function createLocalJWKSet(jwks) {
+	const set = new LocalJWKSetImpl(jwks);
+	const localJWKSet = async (protectedHeader, token) => set.getKey(protectedHeader, token);
+	Object.defineProperty(localJWKSet, "jwks", { value: () => structuredClone(set.jwks()) });
+	return localJWKSet;
+}
+//#endregion
+//#region node_modules/jose/dist/webapi/jwks/remote.js
+function isCloudflareWorkers() {
+	return typeof WebSocketPair !== "undefined" || typeof navigator !== "undefined" && navigator.userAgent === "Cloudflare-Workers" || typeof EdgeRuntime !== "undefined" && EdgeRuntime === "vercel";
+}
+var USER_AGENT;
+if (typeof navigator === "undefined" || !navigator.userAgent?.startsWith?.("Mozilla/5.0 ")) USER_AGENT = `jose/v6.2.9`;
+var customFetch = Symbol();
+async function fetchJwks(url, headers, signal, fetchImpl = fetch) {
+	const response = await fetchImpl(url, {
+		method: "GET",
+		signal,
+		redirect: "manual",
+		headers
+	}).catch((err) => {
+		if (err.name === "TimeoutError") throw new JWKSTimeout();
+		throw err;
+	});
+	if (response.status !== 200) throw new JOSEError("Expected 200 OK from the JSON Web Key Set HTTP response");
+	try {
+		return await response.json();
+	} catch {
+		throw new JOSEError("Failed to parse the JSON Web Key Set HTTP response as JSON");
+	}
+}
+var jwksCache = Symbol();
+function isFreshJwksCache(input, cacheMaxAge) {
+	if (typeof input !== "object" || input === null) return false;
+	if (!("uat" in input) || typeof input.uat !== "number" || Date.now() - input.uat >= cacheMaxAge) return false;
+	if (!("jwks" in input) || !isObject(input.jwks) || !Array.isArray(input.jwks.keys) || !Array.prototype.every.call(input.jwks.keys, isObject)) return false;
+	return true;
+}
+var RemoteJWKSetImpl = class {
+	#url;
+	#timeoutDuration;
+	#cooldownDuration;
+	#cacheMaxAge;
+	#jwksTimestamp;
+	#pendingFetch;
+	#headers;
+	#customFetch;
+	#local;
+	#cache;
+	constructor(url, options) {
+		if (!(url instanceof URL)) throw new TypeError("url must be an instance of URL");
+		this.#url = new URL(url.href);
+		const opts = options ?? {};
+		this.#timeoutDuration = typeof opts.timeoutDuration === "number" ? opts.timeoutDuration : 5e3;
+		this.#cooldownDuration = typeof opts.cooldownDuration === "number" ? opts.cooldownDuration : 3e4;
+		this.#cacheMaxAge = typeof opts.cacheMaxAge === "number" ? opts.cacheMaxAge : 6e5;
+		this.#headers = new Headers(opts.headers);
+		if (USER_AGENT && !this.#headers.has("User-Agent")) this.#headers.set("User-Agent", USER_AGENT);
+		if (!this.#headers.has("accept")) {
+			this.#headers.set("accept", "application/json");
+			this.#headers.append("accept", "application/jwk-set+json");
+		}
+		this.#customFetch = opts[customFetch];
+		const cache = opts[jwksCache];
+		if (cache !== void 0) {
+			this.#cache = cache;
+			if (isFreshJwksCache(cache, this.#cacheMaxAge)) {
+				this.#jwksTimestamp = this.#cache.uat;
+				this.#local = createLocalJWKSet(this.#cache.jwks);
+			}
+		}
+	}
+	pendingFetch() {
+		return !!this.#pendingFetch;
+	}
+	#validFor(duration) {
+		return typeof this.#jwksTimestamp === "number" && Date.now() < this.#jwksTimestamp + duration;
+	}
+	coolingDown() {
+		return this.#validFor(this.#cooldownDuration);
+	}
+	fresh() {
+		return this.#validFor(this.#cacheMaxAge);
+	}
+	jwks() {
+		return this.#local?.jwks();
+	}
+	async getKey(protectedHeader, token) {
+		if (!this.#local || !this.fresh()) await this.reload();
+		try {
+			return await this.#local(protectedHeader, token);
+		} catch (err) {
+			if (err instanceof JWKSNoMatchingKey) {
+				if (this.coolingDown() === false) {
+					await this.reload();
+					return this.#local(protectedHeader, token);
+				}
+			}
+			throw err;
+		}
+	}
+	async reload() {
+		if (this.#pendingFetch && isCloudflareWorkers()) this.#pendingFetch = void 0;
+		this.#pendingFetch ||= fetchJwks(this.#url.href, this.#headers, AbortSignal.timeout(this.#timeoutDuration), this.#customFetch).then((json) => {
+			this.#local = createLocalJWKSet(json);
+			if (this.#cache) {
+				this.#cache.uat = Date.now();
+				this.#cache.jwks = json;
+			}
+			this.#jwksTimestamp = Date.now();
+		}).finally(() => {
+			this.#pendingFetch = void 0;
+		});
+		await this.#pendingFetch;
+	}
+};
+function createRemoteJWKSet(url, options) {
+	const set = new RemoteJWKSetImpl(url, options);
+	const remoteJWKSet = async (protectedHeader, token) => set.getKey(protectedHeader, token);
+	Object.defineProperties(remoteJWKSet, {
+		coolingDown: {
+			get: () => set.coolingDown(),
+			enumerable: true
+		},
+		fresh: {
+			get: () => set.fresh(),
+			enumerable: true
+		},
+		reload: {
+			value: () => set.reload(),
+			enumerable: true
+		},
+		reloading: {
+			get: () => set.pendingFetch(),
+			enumerable: true
+		},
+		jwks: {
+			value: () => set.jwks(),
+			enumerable: true
+		}
+	});
+	return remoteJWKSet;
+}
+//#endregion
+//#region node_modules/jose/dist/webapi/key/import.js
+async function importJWK(jwk, alg, options) {
+	if (!isObject(jwk)) throw new TypeError("JWK must be an object");
+	alg ??= jwk.alg;
+	const ext = options?.extractable ?? jwk.ext;
+	if (jwk.kty !== "oct" && !alg) throw new TypeError("\"alg\" argument is required when \"jwk.alg\" is not present");
+	switch (jwk.kty) {
+		case "oct":
+			if (typeof jwk.k !== "string" || !jwk.k) throw new TypeError("missing \"k\" (Key Value) Parameter value");
+			return decode(jwk.k);
+		case "RSA": return jwkToKey(keyAlgorithm(alg), {
+			...jwk,
+			alg,
+			ext
+		});
+		case "AKP":
+			if (typeof jwk.alg !== "string" || !jwk.alg) throw new TypeError("missing \"alg\" (Algorithm) Parameter value");
+			if (alg !== void 0 && alg !== jwk.alg) throw new TypeError("JWK alg and alg option value mismatch");
+			return jwkToKey(keyAlgorithm(jwk.alg), {
+				...jwk,
+				ext
+			});
+		case "EC":
+		case "OKP": return jwkToKey(keyAlgorithm(alg), {
+			...jwk,
+			alg,
+			ext
+		});
+		default: throw new JOSENotSupported("Unsupported \"kty\" (Key Type) Parameter value");
+	}
+}
+//#endregion
+//#region node_modules/jose/dist/webapi/util/decode_protected_header.js
+function decodeProtectedHeader(token) {
+	let protectedB64u;
+	if (typeof token === "string") {
+		const parts = token.split(".");
+		if (parts.length === 3 || parts.length === 5) [protectedB64u] = parts;
+	} else if (typeof token === "object" && token) {
+		if ("protected" in token) protectedB64u = token.protected;
+		else throw new TypeError("Token does not contain a Protected Header");
+	}
+	const invalid = "Invalid Token or Protected Header formatting";
+	if (typeof protectedB64u !== "string" || !protectedB64u) throw new TypeError(invalid);
+	return parseJoseHeader(protectedB64u, TypeError, invalid);
+}
+//#endregion
+//#region node_modules/jose/dist/webapi/util/decode_jwt.js
+function decodeJwt(jwt) {
+	if (typeof jwt !== "string") throw new JWTInvalid("JWTs must use Compact JWS serialization, JWT must be a string");
+	const { 1: payload, length } = jwt.split(".");
+	if (length === 5) throw new JWTInvalid("Only JWTs using Compact JWS serialization can be decoded");
+	if (length !== 3) throw new JWTInvalid("Invalid JWT");
+	if (!payload) throw new JWTInvalid("JWTs must contain a payload");
+	let decoded;
+	try {
+		decoded = decode(payload);
+	} catch {
+		throw new JWTInvalid("Failed to base64url decode the payload");
+	}
+	let result;
+	try {
+		result = JSON.parse(strictDecoder.decode(decoded));
+	} catch {
+		throw new JWTInvalid("Failed to parse the decoded payload as JSON");
+	}
+	if (!isObject(result)) throw new JWTInvalid("Invalid JWT Claims Set");
+	return result;
+}
+//#endregion
+//#region node_modules/@better-auth/utils/dist/random.mjs
+function expandAlphabet(alphabet) {
+	switch (alphabet) {
+		case "a-z": return "abcdefghijklmnopqrstuvwxyz";
+		case "A-Z": return "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+		case "0-9": return "0123456789";
+		case "-_": return "-_";
+		default: throw new Error(`Unsupported alphabet: ${alphabet}`);
+	}
+}
+function createRandomStringGenerator(...baseAlphabets) {
+	const baseCharSet = baseAlphabets.map(expandAlphabet).join("");
+	if (baseCharSet.length === 0) throw new Error("No valid characters provided for random string generation.");
+	const baseCharSetLength = baseCharSet.length;
+	return (length, ...alphabets) => {
+		if (length <= 0) throw new Error("Length must be a positive integer.");
+		let charSet = baseCharSet;
+		let charSetLength = baseCharSetLength;
+		if (alphabets.length > 0) {
+			charSet = alphabets.map(expandAlphabet).join("");
+			charSetLength = charSet.length;
+		}
+		const maxValid = Math.floor(256 / charSetLength) * charSetLength;
+		const buf = new Uint8Array(length * 2);
+		const bufLength = buf.length;
+		let result = "";
+		let bufIndex = bufLength;
+		let rand;
+		while (result.length < length) {
+			if (bufIndex >= bufLength) {
+				crypto.getRandomValues(buf);
+				bufIndex = 0;
+			}
+			rand = buf[bufIndex++];
+			if (rand < maxValid) result += charSet[rand % charSetLength];
+		}
+		return result;
+	};
+}
+//#endregion
+//#region node_modules/@better-auth/core/dist/db/get-tables.mjs
+var getAuthTables = (options) => {
+	const pluginSchema = (options.plugins ?? []).reduce((acc, plugin) => {
+		const schema = plugin.schema;
+		if (!schema) return acc;
+		for (const [key, value] of Object.entries(schema)) acc[key] = {
+			fields: {
+				...acc[key]?.fields,
+				...value.fields
+			},
+			modelName: value.modelName || key,
+			disableMigrations: value.disableMigration ?? acc[key]?.disableMigrations
+		};
+		return acc;
+	}, {});
+	const shouldAddRateLimitTable = options.rateLimit?.storage === "database";
+	const rateLimitTable = { rateLimit: {
+		modelName: options.rateLimit?.modelName || "rateLimit",
+		fields: {
+			key: {
+				type: "string",
+				unique: true,
+				required: true,
+				fieldName: options.rateLimit?.fields?.key || "key"
+			},
+			count: {
+				type: "number",
+				required: true,
+				fieldName: options.rateLimit?.fields?.count || "count"
+			},
+			lastRequest: {
+				type: "number",
+				bigint: true,
+				required: true,
+				fieldName: options.rateLimit?.fields?.lastRequest || "lastRequest",
+				defaultValue: () => Date.now()
+			}
+		}
+	} };
+	const { user, session, account, verification, ...pluginTables } = pluginSchema;
+	const verificationTable = { verification: {
+		modelName: options.verification?.modelName || "verification",
+		fields: {
+			identifier: {
+				type: "string",
+				required: true,
+				fieldName: options.verification?.fields?.identifier || "identifier",
+				index: true
+			},
+			value: {
+				type: "string",
+				required: true,
+				fieldName: options.verification?.fields?.value || "value"
+			},
+			expiresAt: {
+				type: "date",
+				required: true,
+				fieldName: options.verification?.fields?.expiresAt || "expiresAt"
+			},
+			createdAt: {
+				type: "date",
+				required: true,
+				defaultValue: () => /* @__PURE__ */ new Date(),
+				fieldName: options.verification?.fields?.createdAt || "createdAt"
+			},
+			updatedAt: {
+				type: "date",
+				required: true,
+				defaultValue: () => /* @__PURE__ */ new Date(),
+				onUpdate: () => /* @__PURE__ */ new Date(),
+				fieldName: options.verification?.fields?.updatedAt || "updatedAt"
+			},
+			...verification?.fields,
+			...options.verification?.additionalFields
+		},
+		order: 4
+	} };
+	const sessionTable = { session: {
+		modelName: options.session?.modelName || "session",
+		fields: {
+			expiresAt: {
+				type: "date",
+				required: true,
+				fieldName: options.session?.fields?.expiresAt || "expiresAt"
+			},
+			token: {
+				type: "string",
+				required: true,
+				fieldName: options.session?.fields?.token || "token",
+				unique: true
+			},
+			createdAt: {
+				type: "date",
+				required: true,
+				fieldName: options.session?.fields?.createdAt || "createdAt",
+				defaultValue: () => /* @__PURE__ */ new Date()
+			},
+			updatedAt: {
+				type: "date",
+				required: true,
+				fieldName: options.session?.fields?.updatedAt || "updatedAt",
+				onUpdate: () => /* @__PURE__ */ new Date()
+			},
+			ipAddress: {
+				type: "string",
+				required: false,
+				fieldName: options.session?.fields?.ipAddress || "ipAddress"
+			},
+			userAgent: {
+				type: "string",
+				required: false,
+				fieldName: options.session?.fields?.userAgent || "userAgent"
+			},
+			userId: {
+				type: "string",
+				fieldName: options.session?.fields?.userId || "userId",
+				references: {
+					model: "user",
+					field: "id",
+					onDelete: "cascade"
+				},
+				required: true,
+				index: true
+			},
+			...session?.fields,
+			...options.session?.additionalFields
+		},
+		order: 2
+	} };
+	return {
+		user: {
+			modelName: options.user?.modelName || "user",
+			fields: {
+				name: {
+					type: "string",
+					required: true,
+					fieldName: options.user?.fields?.name || "name",
+					sortable: true
+				},
+				email: {
+					type: "string",
+					unique: true,
+					required: true,
+					fieldName: options.user?.fields?.email || "email",
+					sortable: true
+				},
+				emailVerified: {
+					type: "boolean",
+					defaultValue: false,
+					required: true,
+					fieldName: options.user?.fields?.emailVerified || "emailVerified",
+					input: false
+				},
+				image: {
+					type: "string",
+					required: false,
+					fieldName: options.user?.fields?.image || "image"
+				},
+				createdAt: {
+					type: "date",
+					defaultValue: () => /* @__PURE__ */ new Date(),
+					required: true,
+					fieldName: options.user?.fields?.createdAt || "createdAt"
+				},
+				updatedAt: {
+					type: "date",
+					defaultValue: () => /* @__PURE__ */ new Date(),
+					onUpdate: () => /* @__PURE__ */ new Date(),
+					required: true,
+					fieldName: options.user?.fields?.updatedAt || "updatedAt"
+				},
+				...user?.fields,
+				...options.user?.additionalFields
+			},
+			order: 1
+		},
+		...!options.secondaryStorage || options.session?.storeSessionInDatabase ? sessionTable : {},
+		account: {
+			modelName: options.account?.modelName || "account",
+			fields: {
+				accountId: {
+					type: "string",
+					required: true,
+					fieldName: options.account?.fields?.accountId || "accountId"
+				},
+				providerId: {
+					type: "string",
+					required: true,
+					fieldName: options.account?.fields?.providerId || "providerId"
+				},
+				userId: {
+					type: "string",
+					references: {
+						model: "user",
+						field: "id",
+						onDelete: "cascade"
+					},
+					required: true,
+					fieldName: options.account?.fields?.userId || "userId",
+					index: true
+				},
+				accessToken: {
+					type: "string",
+					required: false,
+					returned: false,
+					fieldName: options.account?.fields?.accessToken || "accessToken"
+				},
+				refreshToken: {
+					type: "string",
+					required: false,
+					returned: false,
+					fieldName: options.account?.fields?.refreshToken || "refreshToken"
+				},
+				idToken: {
+					type: "string",
+					required: false,
+					returned: false,
+					fieldName: options.account?.fields?.idToken || "idToken"
+				},
+				accessTokenExpiresAt: {
+					type: "date",
+					required: false,
+					returned: false,
+					fieldName: options.account?.fields?.accessTokenExpiresAt || "accessTokenExpiresAt"
+				},
+				refreshTokenExpiresAt: {
+					type: "date",
+					required: false,
+					returned: false,
+					fieldName: options.account?.fields?.refreshTokenExpiresAt || "refreshTokenExpiresAt"
+				},
+				scope: {
+					type: "string",
+					required: false,
+					fieldName: options.account?.fields?.scope || "scope"
+				},
+				password: {
+					type: "string",
+					required: false,
+					returned: false,
+					fieldName: options.account?.fields?.password || "password"
+				},
+				createdAt: {
+					type: "date",
+					required: true,
+					fieldName: options.account?.fields?.createdAt || "createdAt",
+					defaultValue: () => /* @__PURE__ */ new Date()
+				},
+				updatedAt: {
+					type: "date",
+					required: true,
+					fieldName: options.account?.fields?.updatedAt || "updatedAt",
+					onUpdate: () => /* @__PURE__ */ new Date()
+				},
+				...account?.fields,
+				...options.account?.additionalFields
+			},
+			order: 3
+		},
+		...!options.secondaryStorage || options.verification?.storeInDatabase ? verificationTable : {},
+		...pluginTables,
+		...shouldAddRateLimitTable ? rateLimitTable : {}
+	};
+};
 //#endregion
 //#region node_modules/@better-auth/core/dist/utils/db.mjs
 /**
@@ -15899,8 +15899,8 @@ function createRefreshAccessTokenRequest({ refreshToken, options, authentication
 	body.set("refresh_token", refreshToken);
 	if (authentication === "basic") {
 		const primaryClientId = Array.isArray(options.clientId) ? options.clientId[0] : options.clientId;
-		if (primaryClientId) headers["authorization"] = "Basic " + base64$1.encode(`${primaryClientId}:${options.clientSecret ?? ""}`);
-		else headers["authorization"] = "Basic " + base64$1.encode(`:${options.clientSecret ?? ""}`);
+		if (primaryClientId) headers["authorization"] = "Basic " + base64.encode(`${primaryClientId}:${options.clientSecret ?? ""}`);
+		else headers["authorization"] = "Basic " + base64.encode(`:${options.clientSecret ?? ""}`);
 	} else {
 		const primaryClientId = Array.isArray(options.clientId) ? options.clientId[0] : options.clientId;
 		body.set("client_id", primaryClientId);
@@ -15974,7 +15974,7 @@ function createAuthorizationCodeRequest({ code, codeVerifier, redirectURI, optio
 	else for (const _resource of resource) body.append("resource", _resource);
 	if (authentication === "basic") {
 		const primaryClientId = Array.isArray(options.clientId) ? options.clientId[0] : options.clientId;
-		requestHeaders["authorization"] = `Basic ${base64$1.encode(`${primaryClientId}:${options.clientSecret ?? ""}`)}`;
+		requestHeaders["authorization"] = `Basic ${base64.encode(`${primaryClientId}:${options.clientSecret ?? ""}`)}`;
 	} else {
 		const primaryClientId = Array.isArray(options.clientId) ? options.clientId[0] : options.clientId;
 		body.set("client_id", primaryClientId);
@@ -17518,7 +17518,7 @@ var microsoft = (options) => {
 					if (options.disableProfilePhoto || !context.response.ok) return;
 					try {
 						const pictureBuffer = await context.response.clone().arrayBuffer();
-						user.picture = `data:image/jpeg;base64, ${base64$1.encode(pictureBuffer)}`;
+						user.picture = `data:image/jpeg;base64, ${base64.encode(pictureBuffer)}`;
 					} catch (e) {
 						logger.error(e && typeof e === "object" && "name" in e ? e.name : "", e);
 					}
@@ -17813,7 +17813,7 @@ var paypal = (options) => {
 			/**
 			* PayPal requires Basic Auth for token exchange
 			**/
-			const credentials = base64$1.encode(`${options.clientId}:${options.clientSecret}`);
+			const credentials = base64.encode(`${options.clientId}:${options.clientSecret}`);
 			try {
 				const response = await betterFetch(tokenEndpoint, {
 					method: "POST",
@@ -17843,7 +17843,7 @@ var paypal = (options) => {
 			}
 		},
 		refreshAccessToken: options.refreshAccessToken ? options.refreshAccessToken : async (refreshToken) => {
-			const credentials = base64$1.encode(`${options.clientId}:${options.clientSecret}`);
+			const credentials = base64.encode(`${options.clientId}:${options.clientSecret}`);
 			try {
 				const response = await betterFetch(tokenEndpoint, {
 					method: "POST",
@@ -18116,7 +18116,7 @@ var reddit = (options) => {
 					"content-type": "application/x-www-form-urlencoded",
 					accept: "text/plain",
 					"user-agent": "better-auth",
-					Authorization: `Basic ${base64$1.encode(`${options.clientId}:${options.clientSecret}`)}`
+					Authorization: `Basic ${base64.encode(`${options.clientId}:${options.clientSecret}`)}`
 				},
 				body: body.toString()
 			});
@@ -20046,4 +20046,4 @@ function formatAction(action) {
 	return `${TTY_COLORS.dim}(${action})${TTY_COLORS.reset}`;
 }
 //#endregion
-export { union as $, base64$1 as $t, runWithRequestState as A, encode$1 as At, ZodBoolean as B, JWSInvalid as Bt, isAPIError as C, digest as Ct, runWithTransaction as D, isDisjoint as Dt, runWithAdapter as E, unprotected as Et, toResponse as F, JOSEAlgNotAllowed as Ft, email as G, checkCryptoKey as Gt, any as H, JWTExpired as Ht, serializeCookie as I, JOSENotSupported as It, number as J, concat as Jt, literal as K, checkModulusLength as Kt, serializeSignedCookie as L, JWEDecryptionFailed as Lt, runWithEndpointContext as M, isCryptoKey as Mt, getBetterAuthVersion as N, isKeyLike as Nt, defineRequestState as O, isJWK as Ot, createRouter$1 as P, isKeyObject as Pt, string as Q, uint64be as Qt, safeJSONParse as R, JWEInvalid as Rt, createAuthMiddleware as S, decodeBase64url as St, queueAfterTransactionHook as T, parseJoseHeader as Tt, array as U, JWTInvalid as Ut, ZodString as V, JWTClaimValidationFailed as Vt, boolean as W, invalidKeyInput as Wt, optional as X, encode$2 as Xt, object as Y, decoder as Yt, record as Z, uint32be as Zt, createRateLimitKey as _, getBooleanEnvVar as _n, jweAlgorithm as _t, socialProviders as a, isSafeUrlScheme as an, decodeProtectedHeader as at, deprecate as b, isProduction as bn, jwkToKey as bt, createAuthorizationURL as c, BetterAuthError as cn, JWTClaimsBuilder as ct, generateId as d, defineErrorCodes as dn, sign as dt, base64Url as en, _coercedBoolean as et, withSpan as f, createLogger as fn, JWE_RECOGNIZED as ft, import_src as g, env as gn, validateCritDuplicates as gt, ATTR_OPERATION_ID as h, ENV as hn, validateCrit as ht, SocialProviderListEnum as i, createFetch as in, decodeJwt as it, getCurrentAuthContext as j, assertCryptoKey as jt, hasRequestState as k, isObject$1 as kt, applyDefaultAccessTokenExpiry as l, kAPIErrorHeaderSymbol as ln, validateClaimsSet as lt, ATTR_HOOK_TYPE as m, shouldPublishLog as mn, validateAlgorithms as mt, initGetModelName as n, toKebabCase as nn, getAuthTables as nt, validateAuthorizationCode as o, normalizePathname as on, importJWK as ot, ATTR_CONTEXT as p, logger as pn, JWS_RECOGNIZED as pt, looseObject as q, checkUsage as qt, initGetFieldName as r, betterFetch as rn, createRandomStringGenerator as rt, refreshAccessToken as s, APIError as sn, jwtVerify as st, createAdapterFactory as t, capitalizeFirstLetter as tn, _coercedString as tt, isLoopbackHost as u, BASE_ERROR_CODES as un, jwsAlgorithm as ut, findInvalidTrustedProxies as v, getEnvVar as vn, jweEncryption as vt, getCurrentAdapter as w, encodeBase64url as wt, createAuthEndpoint as x, isTest as xn, assertNotSet as xt, getIp as y, isDevelopment as yn, prepareKey as yt, filterOutputFields as z, JWKInvalid as zt };
+export { validateCrit as $, union as $t, runWithRequestState as A, checkModulusLength as At, getAuthTables as B, ZodString as Bt, isAPIError as C, JWKInvalid as Ct, runWithTransaction as D, JWTInvalid as Dt, runWithAdapter as E, JWTExpired as Et, toResponse as F, uint32be as Ft, jwtVerify as G, email as Gt, decodeJwt as H, any as Ht, serializeCookie as I, uint64be as It, jwsAlgorithm as J, number as Jt, JWTClaimsBuilder as K, literal as Kt, serializeSignedCookie as L, base64 as Lt, runWithEndpointContext as M, concat as Mt, getBetterAuthVersion as N, decoder as Nt, defineRequestState as O, invalidKeyInput as Ot, createRouter$1 as P, encode$1 as Pt, validateAlgorithms as Q, string as Qt, safeJSONParse as R, base64Url as Rt, createAuthMiddleware as S, isTest as Sn, JWEInvalid as St, queueAfterTransactionHook as T, JWTClaimValidationFailed as Tt, decodeProtectedHeader as U, array as Ut, createRandomStringGenerator as V, _enum as Vt, importJWK as W, boolean as Wt, JWE_RECOGNIZED as X, optional as Xt, sign as Y, object as Yt, JWS_RECOGNIZED as Z, record as Zt, createRateLimitKey as _, env as _n, isKeyLike as _t, socialProviders as a, createFetch as an, assertNotSet as at, deprecate as b, isDevelopment as bn, JOSENotSupported as bt, createAuthorizationURL as c, APIError as cn, encodeBase64url as ct, generateId as d, BASE_ERROR_CODES as dn, isDisjoint as dt, _coercedBoolean as en, validateCritDuplicates as et, withSpan as f, defineErrorCodes as fn, isJWK as ft, import_src as g, ENV as gn, isCryptoKey as gt, ATTR_OPERATION_ID as h, shouldPublishLog as hn, assertCryptoKey as ht, SocialProviderListEnum as i, betterFetch as in, jwkToKey as it, getCurrentAuthContext as j, checkUsage as jt, hasRequestState as k, checkCryptoKey as kt, applyDefaultAccessTokenExpiry as l, BetterAuthError as ln, parseJoseHeader as lt, ATTR_HOOK_TYPE as m, logger as mn, encode as mt, initGetModelName as n, capitalizeFirstLetter as nn, jweEncryption as nt, validateAuthorizationCode as o, isSafeUrlScheme as on, decodeBase64url as ot, ATTR_CONTEXT as p, createLogger as pn, isObject as pt, validateClaimsSet as q, looseObject as qt, initGetFieldName as r, toKebabCase as rn, prepareKey as rt, refreshAccessToken as s, normalizePathname as sn, digest as st, createAdapterFactory as t, _coercedString as tn, jweAlgorithm as tt, isLoopbackHost as u, kAPIErrorHeaderSymbol as un, unprotected as ut, findInvalidTrustedProxies as v, getBooleanEnvVar as vn, isKeyObject as vt, getCurrentAdapter as w, JWSInvalid as wt, createAuthEndpoint as x, isProduction as xn, JWEDecryptionFailed as xt, getIp as y, getEnvVar as yn, JOSEAlgNotAllowed as yt, filterOutputFields as z, ZodBoolean as zt };

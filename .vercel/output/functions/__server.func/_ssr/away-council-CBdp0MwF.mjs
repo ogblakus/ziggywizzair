@@ -1,11 +1,11 @@
 import { n as UNIVERSE } from "./universe-BHNCzOwL.mjs";
-import { a as changePct, m as teamBlocks, t as AGENTS } from "./holds-BpglsS1V.mjs";
-import { i as localCouncil } from "./local-council-BdVu5uQG.mjs";
-import { o as withEquityPct } from "./macro-DaPt4VNL.mjs";
+import { a as changePct, p as teamBlocks, t as AGENTS } from "./personas-CKVSpiDt.mjs";
+import { s as withEquityPct } from "./macro-Bg8vwTHR.mjs";
+import { T as runLocalV2 } from "./local-v2-PvgmS_Qo.mjs";
 import { C as t } from "./alert-prefs-BDQeOj_T.mjs";
-import { A as recordsFrom, C as liveProposal, N as stampProposal, _ as compactScorecard, y as equityOf } from "./engine-C1GaS4Le.mjs";
-import { t as analysisSnapshot } from "./setup-Dx2LqFQi.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/away-council-Buqpyo2z.js
+import { A as recordsFrom, C as liveProposal, N as stampProposal, _ as compactScorecard, y as equityOf } from "./engine-BtZ74KnL.mjs";
+import { t as analysisSnapshot } from "./setup-BM_F3gia.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/away-council-CBdp0MwF.js
 function bookLocale(book) {
 	return book.locale === "pl" ? "pl" : "en";
 }
@@ -158,24 +158,30 @@ async function conveneAway(book, quotes, headlines, macro, now) {
 		notified: false
 	};
 	const locale = bookLocale(book);
-	const seenNews = book.tape.filter((row) => row.kind === "news" || row.agentId === "damian").map((row) => row.text);
 	let source = "ai";
 	let result;
 	try {
-		const { runCouncilSession } = await import("./council-5D0nLGSM.mjs").then((n) => n.r);
+		const { runCouncilSession } = await import("./council-B6kDihVd.mjs").then((n) => n.r);
 		const res = await runCouncilSession({
 			snap,
-			last: book.lastCouncil,
 			selected: book.selected,
 			locale
 		});
 		if (res.ok) result = res.result;
 		else {
-			result = localCouncil(snap, book.lastCouncil, locale, seenNews);
+			result = runLocalV2({
+				snap,
+				selected: book.selected,
+				locale
+			});
 			source = "local";
 		}
 	} catch {
-		result = localCouncil(snap, book.lastCouncil, locale, seenNews);
+		result = runLocalV2({
+			snap,
+			selected: book.selected,
+			locale
+		});
 		source = "local";
 	}
 	const next = applyCouncilBook(book, result, now, source);

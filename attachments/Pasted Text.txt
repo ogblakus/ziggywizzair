@@ -1,0 +1,73 @@
+Wykonaj AUDYT Golden Harness. NICZEGO NIE ZMIENIAJ.
+
+Nie modyfikuj:
+- scoring.ts
+- decision-engine.ts
+- local-models.ts
+- runners.ts
+- orchestrator.ts
+- finalize.ts
+- validators.ts
+- żadnej logiki produkcyjnej.
+
+Nie zmieniaj też fixture'ów.
+
+Sprawdź obecne:
+src/lib/agents/golden/fixtures.ts
+src/lib/agents/golden/catalog.ts
+src/lib/agents/golden/harness.ts
+src/lib/agents/golden/harness.test.ts
+
+CEL:
+Potwierdzić, że Golden Harness jest prawdziwym deterministic regression/safety harness, a nie testem dopasowanym do aktualnego wyniku silnika.
+
+Odpowiedz:
+
+1. Czy wszystkie 20 aktywnych scenariuszy testuje konkretny invariant lub zachowanie V2?
+2. Czy którykolwiek expect jest zbyt słaby, np. sprawdza tylko "order present", mimo że powinien sprawdzać:
+   - symbol
+   - side
+   - band
+   - gate
+   - qty
+   - degraded/online
+   - Iris vote
+3. Czy którykolwiek scenariusz może przejść mimo błędnego finalnego orderu?
+4. Czy scenariusze 01/02/13/17/18/20 zostały tylko skalibrowane fixture'em, czy ich expect jest nadal niezależnym testem?
+5. Czy istnieje scenariusz:
+   score 54 → band wait → size 0 → no order
+   Jeżeli nie, zgłoś jako MISSING, ale NIE dodawaj go.
+6. Czy istnieje odpowiednie pokrycie granic:
+   44/45
+   59/60
+   74/75
+   84/85
+   Jeżeli nie, zgłoś MISSING.
+7. Czy Golden Harness używa wyłącznie runLocalV2 i czy jest to poprawne dla deterministic regression tests?
+8. Wyraźnie oddziel:
+   - mechaniczne/safety invariants
+   - strategy expectations
+   - rzeczy, których Golden Harness NIE powinien testować.
+9. Sprawdź, czy 10 todo 21–30 rzeczywiście są już pokryte przez contracts.test.ts i nie ma fałszywego poczucia coverage.
+10. Sprawdź, czy każdy test jest deterministyczny i nie zależy od:
+    - XAI
+    - internetu
+    - czasu
+    - losowości
+    - lastCouncil
+    - środowiska użytkownika.
+
+Na końcu daj:
+
+PASS
+WARNING
+MISSING
+CRITICAL
+
+oraz:
+- ile scenariuszy rzeczywiście testuje safety,
+- ile testuje decision behavior,
+- ile testuje finalization,
+- jakie 3 najważniejsze luki zostały.
+
+NICZEGO NIE EDYTUJ.
