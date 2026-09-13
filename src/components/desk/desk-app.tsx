@@ -14,7 +14,8 @@ import { TapePanel } from "@/components/desk/tape-panel";
 import { TickerStrip, Watchlist } from "@/components/desk/watchlist";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AGENTS, AGENT_BY_ID } from "@/lib/agents/personas";
-import { localAsk, localCouncil } from "@/lib/agents/local-council";
+import { localAsk } from "@/lib/agents/local-council";
+import { runLocalV2 } from "@/lib/agents/local-v2";
 import { askFloor, conveneCouncil } from "@/lib/ai/council";
 import { leaveDeskBook, loadDeskBook, saveDeskBook } from "@/lib/desk/book-server";
 import { bookLooksLive } from "@/lib/desk/engine";
@@ -367,28 +368,19 @@ export function DeskApp({ boot }: { boot: LiveMarketResult }) {
     setConvening(true);
     for (const a of AGENTS) setAgentStatus(a.id, "reading");
     const snap = snapshot();
-    const last = useDesk.getState().lastCouncil;
     const selected = useDesk.getState().selected;
     let result;
     let source: "ai" | "local" = "ai";
-    const lastDamian = last?.agents.find((a) => a.id === "damian")?.thesis;
-    const seenNews = [
-      ...useDesk
-        .getState()
-        .tape.filter((row) => row.kind === "news" || row.agentId === "damian")
-        .map((row) => row.text),
-      ...(lastDamian ? [lastDamian] : []),
-    ];
     try {
-      const res = await conveneCouncil({ data: { snap, last, selected, locale } });
+      const res = await conveneCouncil({ data: { snap, selected, locale } });
       if (res.ok) {
         result = res.result;
       } else {
-        result = localCouncil(snap, last, locale, seenNews);
+        result = runLocalV2({ snap, selected, locale });
         source = "local";
       }
     } catch {
-      result = localCouncil(snap, last, locale, seenNews);
+      result = runLocalV2({ snap, selected, locale });
       source = "local";
     }
     try {

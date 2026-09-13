@@ -1,4 +1,4 @@
-import { localCouncil } from "@/lib/agents/local-council";
+import { runLocalV2 } from "@/lib/agents/local-v2";
 import { compactScorecard, recordsFrom } from "@/lib/agents/scorecard";
 import { AGENTS } from "@/lib/agents/personas";
 import { t } from "@/lib/i18n/locale";
@@ -175,26 +175,22 @@ export async function conveneAway(
   const snap = snapshotFromBook(book, quotes, headlines, macro);
   if (!snap) return { book: { ...book, lastTickAt: now }, proposal: null, notified: false };
   const locale = bookLocale(book);
-  const seenNews = book.tape
-    .filter((row) => row.kind === "news" || row.agentId === "damian")
-    .map((row) => row.text);
   let source: "ai" | "local" = "ai";
   let result: CouncilResult;
   try {
     const { runCouncilSession } = await import("@/lib/ai/council");
     const res = await runCouncilSession({
       snap,
-      last: book.lastCouncil,
       selected: book.selected,
       locale,
     });
     if (res.ok) result = res.result;
     else {
-      result = localCouncil(snap, book.lastCouncil, locale, seenNews);
+      result = runLocalV2({ snap, selected: book.selected, locale });
       source = "local";
     }
   } catch {
-    result = localCouncil(snap, book.lastCouncil, locale, seenNews);
+    result = runLocalV2({ snap, selected: book.selected, locale });
     source = "local";
   }
   const next = applyCouncilBook(book, result, now, source);

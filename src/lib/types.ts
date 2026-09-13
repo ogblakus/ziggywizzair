@@ -167,6 +167,19 @@ export type CouncilResult = {
   }>;
   order: ProposedOrder | null;
   sentiment?: SentimentReport | null;
+  agreement?: {
+    direction: "buy" | "sell" | "hold";
+    level: "high" | "medium" | "low";
+    score: number;
+  } | null;
+  finalScore?: number | null;
+  band?: "reject" | "wait" | "small" | "normal" | "high" | null;
+  decisionId?: string;
+  engineVersion?: string;
+  status?: {
+    mode: "online" | "degraded";
+    sources: Record<AgentId, "llm" | "local" | "rules">;
+  };
 };
 
 export type TickerSnapshot = {

@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AGENTS, AGENT_BY_ID, type Vote } from "@/lib/agents/personas";
+import { AGENTS, AGENT_BY_ID, type AgentId, type Vote } from "@/lib/agents/personas";
 import { recordsFrom } from "@/lib/agents/scorecard";
 import { compactPrice, qtyFmt } from "@/lib/format";
 import { sentimentBias } from "@/lib/market/macro";
@@ -69,8 +69,13 @@ function AgentsPane({ onConvene }: { onConvene?: () => void }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 pb-3">
-        <div className="flex items-baseline gap-2">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-2">
           <h2 className="text-2xs font-medium tracking-wide text-subtle uppercase">{t("floor.council")}</h2>
+          {lastCouncil?.status?.mode === "online" ? (
+            <Badge variant="up">{t("floor.aiOnline")}</Badge>
+          ) : lastCouncil?.status?.mode === "degraded" ? (
+            <Badge variant="default">{t("floor.aiDegraded")}</Badge>
+          ) : null}
           {lastCouncil ? (
             <Badge
               variant={
@@ -91,6 +96,18 @@ function AgentsPane({ onConvene }: { onConvene?: () => void }) {
       </div>
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-1">
+        {lastCouncil?.agreement?.level === "low" ? (
+          <div className="rounded-lg bg-surface px-3 py-2 text-xs text-muted shadow-[var(--shadow-border)]">
+            {t("floor.disagree")}
+            {lastCouncil.finalScore != null ? ` · ${t("floor.score", { n: lastCouncil.finalScore.toFixed(0) })}` : ""}
+            {lastCouncil.band ? ` · ${t(`floor.band.${lastCouncil.band}` as MsgKey)}` : ""}
+          </div>
+        ) : lastCouncil?.finalScore != null ? (
+          <p className="px-0.5 text-2xs text-subtle">
+            {t("floor.score", { n: lastCouncil.finalScore.toFixed(0) })}
+            {lastCouncil.band ? ` · ${t(`floor.band.${lastCouncil.band}` as MsgKey)}` : ""}
+          </p>
+        ) : null}
         <DamianCard />
 
         <p className="px-0.5 text-2xs font-medium tracking-wide text-subtle uppercase">{t("floor.specialists")}</p>
@@ -111,6 +128,7 @@ function AgentsPane({ onConvene }: { onConvene?: () => void }) {
                         <div className="text-sm font-medium">{persona.name}</div>
                         <div className="text-xs text-subtle">
                           {t(`role.${persona.id}` as MsgKey)}
+                          <SourceChip id={persona.id} />
                           {rec ? (
                             <span className="ml-1.5 text-muted">
                               {rec.closed >= 2
@@ -156,7 +174,10 @@ function AgentsPane({ onConvene }: { onConvene?: () => void }) {
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <div className="text-sm font-medium">{persona.name}</div>
-                      <div className="text-xs text-subtle">{t("role.iris")}</div>
+                      <div className="text-xs text-subtle">
+                        {t("role.iris")}
+                        <SourceChip id="iris" />
+                      </div>
                     </div>
                     {speech ? <VoteChip vote={speech.vote} symbol={speech.symbol} /> : null}
                   </div>
@@ -366,7 +387,10 @@ function DamianCard() {
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium">Damian Kaczmarski</div>
-          <div className="text-xs text-subtle">{t("floor.sentiment")}</div>
+          <div className="text-xs text-subtle">
+            {t("floor.sentiment")}
+            <SourceChip id="damian" />
+          </div>
           <p className={cn("mt-1.5 text-sm leading-relaxed text-muted", reading && "shimmer-text")}>
             {reading ? t("floor.reading") : thesis}
           </p>
@@ -439,6 +463,18 @@ function DamianCard() {
         </div>
       </div>
     </div>
+  );
+}
+
+function SourceChip({ id }: { id: AgentId }) {
+  const lastCouncil = useDesk((s) => s.lastCouncil);
+  const t = useT();
+  const src = lastCouncil?.status?.sources?.[id];
+  if (!src || src === "llm") return null;
+  return (
+    <span className="ml-1.5 font-mono text-2xs uppercase tracking-wide text-subtle">
+      {src === "rules" ? t("floor.sourceRules") : t("floor.sourceLocal")}
+    </span>
   );
 }
 
