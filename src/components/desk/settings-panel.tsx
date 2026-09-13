@@ -15,6 +15,7 @@ import { hasGateSessionMarker } from "@/lib/auth/gate-session-marker";
 import { claimUsername, loadProfile } from "@/lib/desk/profile-server";
 import { useDesk } from "@/lib/desk-store";
 import { WalletCard } from "@/components/desk/wallet-card";
+import { PasswordCard } from "@/components/desk/password-card";
 import { replayDeskTour } from "@/components/desk/desk-tour";
 import type { Appearance } from "@/lib/theme";
 import { LanguageSwitch, useLocale, useT, type MsgKey } from "@/lib/i18n";
@@ -23,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { usePushAlerts } from "@/components/desk/alerts-button";
 import { TIMEZONES, setTz, useTz } from "@/lib/tz";
+import type { AlertKind } from "@/lib/desk/alert-prefs";
 
 const subscribeToNothing = () => () => {};
 const noGateOnServer = () => false;
@@ -40,6 +42,8 @@ export function SettingsPanel() {
       </h2>
 
       <HandleCard />
+
+      <PasswordCard />
 
       <section className="mt-3 rounded-xl bg-elevated p-3 shadow-[var(--shadow-border)]">
         <div className="text-sm font-medium">{t("settings.language")}</div>
@@ -129,7 +133,7 @@ function TzCard() {
             onClick={() => setTz(z.id)}
             aria-pressed={tz === z.id}
             className={cn(
-              "flex h-10 items-center justify-center rounded-md px-1 text-center text-2xs font-medium",
+              "flex h-11 items-center justify-center rounded-md px-1 text-center text-2xs font-medium",
               tz === z.id ? "bg-elevated text-fg" : "text-muted",
             )}
           >
@@ -144,6 +148,9 @@ function TzCard() {
 function PushCard() {
   const t = useT();
   const push = usePushAlerts();
+  const prefs = useDesk((s) => s.alertPrefs);
+  const setAlertPrefs = useDesk((s) => s.setAlertPrefs);
+  const kinds: AlertKind[] = ["open", "close", "proposal"];
   return (
     <section className="mt-3 rounded-xl bg-elevated p-3 shadow-[var(--shadow-border)]">
       <div className="flex items-start justify-between gap-3">
@@ -163,6 +170,22 @@ function PushCard() {
           }}
           aria-label={t("alerts.awayAria")}
         />
+      </div>
+      <div className="mt-3 border-t border-border pt-3">
+        <div className="text-sm font-medium">{t("alerts.prefs")}</div>
+        <p className="mt-0.5 text-2xs leading-relaxed text-muted">{t("alerts.prefsBody")}</p>
+        <ul className="mt-2 space-y-2">
+          {kinds.map((kind) => (
+            <li key={kind} className="flex items-center justify-between gap-3">
+              <span className="text-xs text-fg">{t(`alerts.kind.${kind}` as MsgKey)}</span>
+              <Switch
+                checked={prefs?.[kind] !== false}
+                onCheckedChange={(on) => setAlertPrefs({ ...(prefs ?? { open: true, close: true, proposal: true }), [kind]: on })}
+                aria-label={t(`alerts.kind.${kind}` as MsgKey)}
+              />
+            </li>
+          ))}
+        </ul>
       </div>
     </section>
   );

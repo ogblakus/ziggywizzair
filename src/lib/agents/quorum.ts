@@ -18,8 +18,8 @@ export function votesOn(
 }
 
 /**
- * Chain: scout (Vesper or Ash) names it → Iris sizes from Damian → Kai stamps last.
- * Ash and Vesper do not vote each other down — they hunt different things.
+ * Chain: Damian weather → Vesper/Ash rank names → Iris sizes → Kai stamps limit (ready or wait).
+ * Kai does not veto direction — only chase and dead tape.
  * New risk needs a scout AND Kai on the same ticker/side. Cuts need one scout (or Kai).
  */
 export function gateCouncilOrder(

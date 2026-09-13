@@ -1,6 +1,9 @@
 #!/bin/sh
 set -eu
 cd /workspace
+# Preview desk store (PGLite) needs more than the default 1024 fds.
+# Without this, login dies with "No file descriptors available".
+ulimit -n 8192 2>/dev/null || ulimit -n 4096 2>/dev/null || true
 # :8081 is QA-only — a revive must never inherit a stale built-output preview.
 # Called directly, not via npm: no node_modules needed, so nothing to wait for.
 node scripts/preview.mjs stop || true

@@ -69,7 +69,7 @@ export function AutopilotSwitch({
     <>
       <label className={cn("flex items-center gap-2", className)}>
         {showLabel ? (
-          <span className="text-2xs font-medium text-muted">
+          <span className="text-2xs font-medium text-muted lg:hidden xl:inline">
             {autopilot ? t("floor.autopilotLive") : t("header.autopilot")}
           </span>
         ) : null}
@@ -121,14 +121,14 @@ export function FloorControls({
   const convening = useDesk((s) => s.convening);
   const mode = useTradingMode((s) => s.mode);
   return (
-    <div className={cn("flex shrink-0 items-center gap-2", className)}>
+    <div className={cn("min-w-0 shrink-0 flex-wrap items-center gap-2", className)}>
       {mode === "demo" ? <AutopilotSwitch /> : null}
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
             variant="secondary"
             size="sm"
-            className="h-7 shrink-0 px-2.5 text-2xs"
+            className="h-11 shrink-0 px-2.5 text-2xs lg:h-9"
             onClick={onConvene}
             disabled={convening}
           >

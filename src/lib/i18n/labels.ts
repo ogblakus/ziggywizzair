@@ -49,6 +49,8 @@ const NOTE_KEYS: Record<string, MsgKey> = {
   "Ręcznie (część)": "close.manualPartial",
   "close.timeSession": "close.timeSession",
   "close.timePromising": "close.timePromising",
+  "close.stopLoss": "close.stopLoss",
+  "close.takeProfit": "close.takeProfit",
   "close.contrary": "close.contrary",
   "close.hyperliquid": "close.hl",
   Close: "port.closeNote",

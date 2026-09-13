@@ -49,7 +49,7 @@ export function ProposalBanner() {
 
   return (
     <div className="shrink-0 border-b border-up/30 bg-up/10 px-3 py-2.5 sm:px-4">
-      <div className="flex items-start gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
         <div className="min-w-0 flex-1">
           <p className="text-2xs font-medium tracking-wide text-subtle uppercase">{t("floor.proposed")}</p>
           <p className="mt-0.5 font-mono text-sm tabular-nums text-fg">
@@ -61,11 +61,11 @@ export function ProposalBanner() {
             {t("floor.ticketTtl", { m: mins, left: clock(left) })}
           </p>
         </div>
-        <div className="flex shrink-0 flex-col gap-1.5">
-          <Button size="sm" onClick={fill} disabled={mode === "live"}>
+        <div className="flex shrink-0 gap-1.5 sm:flex-col">
+          <Button className="h-11 flex-1 sm:h-9 sm:flex-none" size="sm" onClick={fill} disabled={mode === "live"}>
             {t("floor.place")}
           </Button>
-          <Button size="sm" variant="ghost" onClick={dismissProposal}>
+          <Button className="h-11 flex-1 sm:h-9 sm:flex-none" size="sm" variant="ghost" onClick={dismissProposal}>
             {t("floor.dismiss")}
           </Button>
         </div>

@@ -1,18 +1,19 @@
-import { describe, expect, it } from "vitest";
-import { emptyBook, scrubGhostAutopilot } from "@/lib/desk/engine";
-import { shouldAwayCouncil, AWAY_COUNCIL_MS } from "@/lib/desk/away-council";
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import { emptyBook, scrubGhostAutopilot } from "./engine.ts";
+import { shouldAwayCouncil, AWAY_COUNCIL_MS } from "./away-council.ts";
 
 describe("shouldAwayCouncil", () => {
   it("does not convene while the client is still here", () => {
     const now = 1_000_000;
     const book = { ...emptyBook(now), clientUntil: now + 10_000, lastTickAt: now };
-    expect(shouldAwayCouncil(book, now)).toBe(false);
+    assert.equal(shouldAwayCouncil(book, now), false);
   });
 
   it("does not convene in live", () => {
     const now = 1_000_000;
     const book = { ...emptyBook(now), mode: "live" as const, clientUntil: 0, lastTickAt: now - 120_000 };
-    expect(shouldAwayCouncil(book, now)).toBe(false);
+    assert.equal(shouldAwayCouncil(book, now), false);
   });
 
   it("waits while a ticket is already on the rail", () => {
@@ -23,13 +24,13 @@ describe("shouldAwayCouncil", () => {
       lastTickAt: now - 120_000,
       proposal: { side: "buy" as const, symbol: "META", qty: 10, rationale: "test" },
     };
-    expect(shouldAwayCouncil(book, now)).toBe(false);
+    assert.equal(shouldAwayCouncil(book, now), false);
   });
 
   it("convenes after the client leaves and no recent session", () => {
     const now = 1_000_000;
     const book = { ...emptyBook(now), clientUntil: now - 60_000, lastTickAt: now - 120_000, lastCouncilAt: 0 };
-    expect(shouldAwayCouncil(book, now)).toBe(true);
+    assert.equal(shouldAwayCouncil(book, now), true);
   });
 
   it("respects the 5 minute cooldown after a session", () => {
@@ -40,8 +41,8 @@ describe("shouldAwayCouncil", () => {
       lastTickAt: now - 120_000,
       lastCouncilAt: now - (AWAY_COUNCIL_MS - 1_000),
     };
-    expect(shouldAwayCouncil(book, now)).toBe(false);
-    expect(shouldAwayCouncil({ ...book, lastCouncilAt: now - AWAY_COUNCIL_MS - 1 }, now)).toBe(true);
+    assert.equal(shouldAwayCouncil(book, now), false);
+    assert.equal(shouldAwayCouncil({ ...book, lastCouncilAt: now - AWAY_COUNCIL_MS - 1 }, now), true);
   });
 });
 
@@ -71,9 +72,9 @@ describe("scrubGhostAutopilot", () => {
       ],
     };
     const clean = scrubGhostAutopilot(book);
-    expect(clean.fills).toEqual([]);
-    expect(clean.positions).toEqual([]);
-    expect(clean.cash).toBeCloseTo(96_730.73 + 5 * 653.85, 4);
-    expect(clean.tape.map((t) => t.id)).toEqual(["t3"]);
+    assert.deepEqual(clean.fills, []);
+    assert.deepEqual(clean.positions, []);
+    assert.ok(Math.abs(clean.cash - (96_730.73 + 5 * 653.85)) < 1e-4);
+    assert.deepEqual(clean.tape.map((t) => t.id), ["t3"]);
   });
 });

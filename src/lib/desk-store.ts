@@ -13,6 +13,8 @@ import {
 } from "@/lib/desk/engine";
 import { addCountToday, holdExpired, isAddOn, isReduce, MAX_ADDS_PER_DAY, promisingHold, stampOpened, teamBlocks, viewOf, withTeamLocks } from "@/lib/desk/holds";
 import { hlFeeUsd, type FeeKind } from "@/lib/desk/fees";
+import { DEFAULT_ALERT_PREFS, normalizeAlertPrefs, type AlertPrefs } from "@/lib/desk/alert-prefs";
+import { hitStop } from "@/lib/desk/stops";
 import { tapeFillText } from "@/lib/i18n/labels";
 import { t } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n/locale";
@@ -79,6 +81,7 @@ type DeskActions = {
   markHydrated: () => void;
   applyLiveQuotes: (quotes: LiveQuote[]) => void;
   applyLiveMids: (mids: Record<string, number>) => void;
+  applySymbolChart: (symbol: string, tf: "1m" | "5m" | "15m", bars: TickBar[]) => void;
   applyHeadlines: (items: Headline[]) => void;
   applyMacro: (macro: MacroTape) => void;
   setFeed: (feed: FeedStatusLocal) => void;
@@ -96,11 +99,15 @@ type DeskActions = {
     note?: string;
     skipRisk?: boolean;
     feeKind?: FeeKind;
+    stopLoss?: number | null;
+    takeProfit?: number | null;
   }) => { ok: true; fill: Fill } | { ok: false; error: string };
   closePosition: (
     symbol: string,
     qty?: number,
   ) => { ok: true; fill: Fill } | { ok: false; error: string };
+  setStops: (symbol: string, stops: { stopLoss: number | null; takeProfit: number | null }) => void;
+  setAlertPrefs: (prefs: AlertPrefs) => void;
   toggleTeamLock: (symbol: string) => void;
   applyCouncil: (result: CouncilResult, source: "ai" | "local", opts?: { spoken?: boolean }) => void;
   answerAsk: (question: string, result: { speaker: AgentId; text: string }, source: "ai" | "local") => void;
@@ -114,6 +121,7 @@ type DeskActions = {
   touchTick: () => void;
   reset: () => void;
   applyTimeStops: () => void;
+  applyPriceStops: () => void;
 };
 
 const empty = emptyBook();
@@ -258,6 +266,7 @@ export function toDeskBook(s: DeskState): DeskBook {
     lastCouncilAt: s.lastCouncilAt,
     locale: getLocale(),
     mode: useTradingMode.getState().mode,
+    alertPrefs: s.alertPrefs ?? { ...DEFAULT_ALERT_PREFS },
   };
 }
 
@@ -332,6 +341,7 @@ export const useDesk = create<DeskState & DeskActions>()(
           );
           if (!already) get().speak({ kind: "system", text: t("tape.liveOn") });
         }
+        get().applyPriceStops();
         get().applyTimeStops();
         get().tryFillWorking();
       },
@@ -389,8 +399,39 @@ export const useDesk = create<DeskState & DeskActions>()(
         useMarks.getState().tick(mergeAssets(assets));
         const proposal = liveProposal(get().proposal, now);
         if (proposal !== get().proposal) set({ proposal });
+        get().applyPriceStops();
         get().applyTimeStops();
         get().tryFillWorking();
+      },
+      applySymbolChart: (symbol, tf, bars) => {
+        if (!bars || bars.length < 2) return;
+        const s = get();
+        const prev = s.assets[symbol];
+        if (!prev) return;
+        const incomingLast = bars.at(-1)!.t;
+        if (tf === "1m") {
+          const have = prev.series;
+          if (have.length >= bars.length && (have.at(-1)?.t ?? 0) >= incomingLast) return;
+          set({ assets: { ...s.assets, [symbol]: { ...prev, series: bars.slice(-120) } } });
+          return;
+        }
+        if (tf === "5m") {
+          const have = prev.chart5 ?? [];
+          if (have.length >= bars.length && (have.at(-1)?.t ?? 0) >= incomingLast) return;
+          set({ assets: { ...s.assets, [symbol]: { ...prev, chart5: bars.slice(-90) } } });
+          return;
+        }
+        const have = prev.htf?.m15 ?? [];
+        if (have.length >= bars.length && (have.at(-1)?.t ?? 0) >= incomingLast) return;
+        set({
+          assets: {
+            ...s.assets,
+            [symbol]: {
+              ...prev,
+              htf: { m15: bars.slice(-96), h1: prev.htf?.h1 ?? [], h4: prev.htf?.h4 ?? [] },
+            },
+          },
+        });
       },
       applyHeadlines: (items) => {
         const prev = get();
@@ -445,7 +486,7 @@ export const useDesk = create<DeskState & DeskActions>()(
         set({
           agents: get().agents.map((a) => (a.id === id ? { ...a, status } : a)),
         }),
-      placeOrder: ({ symbol, side, qty, source, note, skipRisk, feeKind }) => {
+      placeOrder: ({ symbol, side, qty, source, note, skipRisk, feeKind, stopLoss, takeProfit }) => {
         if (useTradingMode.getState().mode === "live") {
           return { ok: false as const, error: "Live orders from this desk are not signed yet. Switch to Demo to practice." };
         }
@@ -492,14 +533,20 @@ export const useDesk = create<DeskState & DeskActions>()(
           next.positions,
           fill,
         );
+        const withStops = stamped.map((p) => {
+          if (p.symbol !== symbol) return p;
+          const sl = stopLoss !== undefined ? stopLoss : p.stopLoss ?? null;
+          const tp = takeProfit !== undefined ? takeProfit : p.takeProfit ?? null;
+          return { ...p, stopLoss: sl, takeProfit: tp };
+        });
         const closed = closedFromFill(
           s.positions.find((p) => p.symbol === symbol),
           fill,
         );
         const decorated = closed ? decorateClosed(closed, s.lastCouncil, fill, s.fills, s.locale) : null;
         const closedTrades = decorated ? [decorated, ...(s.closedTrades ?? [])].slice(0, 200) : (s.closedTrades ?? []);
-        const eq = bookEquity(next.cash, stamped, priced);
-        const stillOpen = Math.abs(stamped.find((p) => p.symbol === symbol)?.qty ?? 0) > 1e-8;
+        const eq = bookEquity(next.cash, withStops, priced);
+        const stillOpen = Math.abs(withStops.find((p) => p.symbol === symbol)?.qty ?? 0) > 1e-8;
         let agentCalls = closeCallsFor(s.agentCalls ?? [], symbol, price, now, stillOpen);
         if (source === "council") {
           const who = proposerFrom(s.lastCouncil, symbol, side);
@@ -521,7 +568,7 @@ export const useDesk = create<DeskState & DeskActions>()(
         }
         set({
           cash: next.cash,
-          positions: stamped,
+          positions: withStops,
           fills: [fill, ...s.fills].slice(0, 80),
           closedTrades,
           fillSeq: nextSeq,
@@ -537,6 +584,17 @@ export const useDesk = create<DeskState & DeskActions>()(
         });
         return { ok: true as const, fill };
       },
+      setStops: (symbol, stops) => {
+        const s = get();
+        if (!s.positions.some((p) => p.symbol === symbol)) return;
+        set({
+          positions: s.positions.map((p) =>
+            p.symbol === symbol ? { ...p, stopLoss: stops.stopLoss, takeProfit: stops.takeProfit } : p,
+          ),
+          lastTickAt: Date.now(),
+        });
+      },
+      setAlertPrefs: (prefs) => set({ alertPrefs: normalizeAlertPrefs(prefs) }),
       toggleTeamLock: (symbol) => {
         const s = get();
         const pos = s.positions.find((p) => p.symbol === symbol);
@@ -625,6 +683,10 @@ export const useDesk = create<DeskState & DeskActions>()(
           return { ok: false as const, error: "Team locked out of this trade." };
         }
         if (proposal.limitPx && proposal.limitPx > 0 && !reducing) {
+          if (s.working && (s.working.symbol !== proposal.symbol || s.working.side !== proposal.side)) {
+            set({ proposal: null, lastTickAt: Date.now() });
+            return { ok: true as const };
+          }
           set({ working: proposal, proposal: null, lastTickAt: Date.now() });
           get().speak({
             kind: "system",
@@ -742,7 +804,7 @@ export const useDesk = create<DeskState & DeskActions>()(
           return {
             tickers: [],
             headlines: [],
-            book: { cash: s.cash, equity: s.cash, dayPnlPct: 0, positions: [] },
+            book: { cash: s.cash, equity: s.cash, dayPnlPct: 0, positions: [], working: s.working },
             macro: s.macro,
             scorecard: compactScorecard(recordsFrom(s.agentCalls ?? []), s.agentCalls ?? []),
           };
@@ -762,6 +824,9 @@ export const useDesk = create<DeskState & DeskActions>()(
               const pnlPct = p.avg ? ((px - p.avg) / p.avg) * 100 * Math.sign(p.qty || 1) : 0;
               return { symbol: p.symbol, qty: p.qty, avg: p.avg, pnlPct, teamLock: Boolean(p.teamLock) };
             }),
+            working: s.working
+              ? { side: s.working.side, symbol: s.working.symbol, qty: s.working.qty, limitPx: s.working.limitPx }
+              : null,
           },
           macro: withEquityPct(s.macro, spyChg),
           scorecard: compactScorecard(recordsFrom(s.agentCalls ?? []), s.agentCalls ?? []),
@@ -793,6 +858,7 @@ export const useDesk = create<DeskState & DeskActions>()(
           deskEpoch: clean.deskEpoch,
           agentCalls: clean.agentCalls,
           lastCouncilAt: clean.lastCouncilAt,
+          alertPrefs: normalizeAlertPrefs(clean.alertPrefs),
         });
       },
       touchTick: () => set({ lastTickAt: Date.now(), clientUntil: Date.now() + 45_000 }),
@@ -811,6 +877,25 @@ export const useDesk = create<DeskState & DeskActions>()(
           asking: false,
           pendingAsk: null,
         });
+      },
+      applyPriceStops: () => {
+        const s = get();
+        const assets = mergeAssets(s.assets);
+        for (const pos of s.positions) {
+          const a = assets[pos.symbol];
+          const px = a?.livePx && a.livePx > 0 ? a.livePx : a?.price;
+          if (!(px && px > 0)) continue;
+          const hit = hitStop(pos, px);
+          if (!hit) continue;
+          get().placeOrder({
+            symbol: pos.symbol,
+            side: pos.qty > 0 ? "sell" : "buy",
+            qty: Math.abs(pos.qty),
+            source: "manual",
+            note: hit === "sl" ? "close.stopLoss" : "close.takeProfit",
+            skipRisk: true,
+          });
+        }
       },
       applyTimeStops: () => {
         const s = get();
@@ -858,10 +943,12 @@ export const useDesk = create<DeskState & DeskActions>()(
         agentCalls: s.agentCalls,
         lastCouncilAt: s.lastCouncilAt,
         locale: s.locale,
+        alertPrefs: s.alertPrefs ?? { ...DEFAULT_ALERT_PREFS },
       }),
       onRehydrateStorage: () => (state) => {
         if (!state) return;
         state.positions = withTeamLocks(state.positions ?? [], state.fills ?? []);
+        state.alertPrefs = normalizeAlertPrefs(state.alertPrefs);
       },
     },
   ),

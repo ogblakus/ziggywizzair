@@ -19,9 +19,11 @@ import type {
 import { AGENTS } from "@/lib/agents/personas";
 import { closeCallsFor, openCall, proposerFrom } from "@/lib/agents/scorecard";
 import { addCountToday, holdExpired, isAddOn, MAX_ADDS_PER_DAY, promisingHold, stampOpened, teamBlocks } from "@/lib/desk/holds";
+import { hitStop } from "@/lib/desk/stops";
 import { hlFeeUsd, hlRoundTripPct, type FeeKind } from "@/lib/desk/fees";
 import { t } from "@/lib/i18n/locale";
 import { tapeFillText } from "@/lib/i18n/labels";
+import { DEFAULT_ALERT_PREFS, type AlertPrefs } from "@/lib/desk/alert-prefs";
 
 export type DeskBook = {
   cash: number;
@@ -47,6 +49,7 @@ export type DeskBook = {
   lastCouncilAt: number;
   locale: "en" | "pl";
   mode: "demo" | "live";
+  alertPrefs: AlertPrefs;
 };
 
 export function idleAgents(): AgentSpeech[] {
@@ -92,6 +95,7 @@ export function emptyBook(now = Date.now()): DeskBook {
     lastCouncilAt: 0,
     locale: "en",
     mode: "demo",
+    alertPrefs: { ...DEFAULT_ALERT_PREFS },
   };
 }
 
@@ -351,6 +355,52 @@ export function expireHolds(book: DeskBook, quotes: LiveQuote[], now: number): D
   return next;
 }
 
+export function expireStops(book: DeskBook, quotes: LiveQuote[], now: number): DeskBook {
+  if (!book.positions.length) return book;
+  const views = viewsAt(quotes, now);
+  const bySym = new Map(views.map((v) => [v.symbol, v]));
+  const assets: Record<string, MarketAsset> = {};
+  for (const v of views) {
+    const u = UNIVERSE.find((x) => x.symbol === v.symbol);
+    if (!u) continue;
+    assets[v.symbol] = {
+      symbol: v.symbol,
+      name: u.name,
+      price: v.price,
+      open: v.price,
+      high: v.price,
+      low: v.price,
+      series: [{ t: now, px: v.price }],
+      vol: u.vol,
+      beta: u.beta,
+      livePx: v.price,
+      liveCoin: null,
+      spotPx: null,
+      tape: "hl",
+    };
+  }
+  let next = book;
+  for (const pos of [...next.positions]) {
+    const v = bySym.get(pos.symbol);
+    if (!v) continue;
+    const hit = hitStop(pos, v.price);
+    if (!hit) continue;
+    const filled = commitFill(next, {
+      symbol: pos.symbol,
+      side: pos.qty > 0 ? "sell" : "buy",
+      qty: Math.abs(pos.qty),
+      price: v.price,
+      source: "manual",
+      note: hit === "sl" ? "close.stopLoss" : "close.takeProfit",
+      skipRisk: true,
+      ts: now,
+      assets,
+    });
+    if (filled.ok) next = filled.book;
+  }
+  return next;
+}
+
 export function fillWorking(book: DeskBook, quotes: LiveQuote[], now: number): DeskBook {
   const w = book.working;
   if (!w?.limitPx) return book;
@@ -503,6 +553,7 @@ export function autopilotOnce(book: DeskBook, views: TickerView[], now: number):
 export function catchUpBook(book: DeskBook, quotes: LiveQuote[], now: number): DeskBook {
   book = withLiveProposal(book, now);
   if (!quotes.length) return { ...book, lastTickAt: now };
+  book = expireStops(book, quotes, now);
   book = expireHolds(book, quotes, now);
   book = fillWorking(book, quotes, now);
   if (!book.autopilot) return { ...book, lastTickAt: now };

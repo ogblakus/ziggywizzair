@@ -12,21 +12,42 @@ export function handleEmail(nick: string) {
   return `${normalizeUsername(nick)}@${HANDLE_EMAIL_DOMAIN}`;
 }
 
-async function emailForHandle(raw: string): Promise<string | null> {
+export async function emailForHandle(raw: string): Promise<string | null> {
   const handle = raw.trim().toLowerCase();
   if (!handle) return null;
   if (looksLikeEmail(handle)) return handle;
   if (usernameError(handle)) return null;
-  const { getSql } = await import("@/lib/db");
-  const sql = await getSql();
-  const rows = await sql<{ email: string }>`
-    select u.email as email
-    from desk_profiles p
-    join "user" u on u.id = p.user_id
-    where lower(p.username) = ${handle}
-    limit 1
-  `;
-  return rows[0]?.email ?? handleEmail(handle);
+  try {
+    const { getSql } = await import("@/lib/db");
+    const sql = await getSql();
+    const rows = await sql<{ email: string }>`
+      select u.email as email
+      from desk_profiles p
+      join "user" u on u.id = p.user_id
+      where lower(p.username) = ${handle}
+      limit 1
+    `;
+    return rows[0]?.email ?? handleEmail(handle);
+  } catch {
+    return handleEmail(handle);
+  }
+}
+
+async function attachDevice(email: string, device?: string) {
+  if (!device) return;
+  try {
+    const { getSql } = await import("@/lib/db");
+    const sql = await getSql();
+    const rows = await sql<{ id: string }>`
+      select id from "user" where lower(email) = ${email.toLowerCase()} limit 1
+    `;
+    const userId = rows[0]?.id;
+    if (!userId) return;
+    const { rememberDevice } = await import("@/lib/desk/password");
+    await rememberDevice(userId, device);
+  } catch {
+    /* device trust is best-effort */
+  }
 }
 
 export const handleAvailable = createServerFn({ method: "POST" })
@@ -49,7 +70,7 @@ export const handleAvailable = createServerFn({ method: "POST" })
   });
 
 export const signInHandle = createServerFn({ method: "POST" })
-  .validator((input: { handle: string; password: string; remember?: boolean }) => input)
+  .validator((input: { handle: string; password: string; remember?: boolean; device?: string }) => input)
   .handler(async ({ data }): Promise<{ ok: true; token: string | null } | { ok: false; error: "bad" }> => {
     const password = data.password;
     if (password.length < 8 || password.length > 128) return { ok: false, error: "bad" };
@@ -75,6 +96,7 @@ export const signInHandle = createServerFn({ method: "POST" })
         result && typeof result === "object" && "token" in result
           ? ((result as { token?: string | null }).token ?? null)
           : null;
+      await attachDevice(email, data.device);
       return { ok: true, token };
     } catch {
       return { ok: false, error: "bad" };
@@ -91,7 +113,7 @@ async function requestHeaders(): Promise<Headers | undefined> {
 }
 
 export const signUpHandle = createServerFn({ method: "POST" })
-  .validator((input: { username: string; password: string }) => input)
+  .validator((input: { username: string; password: string; device?: string }) => input)
   .handler(async ({ data }): Promise<{ ok: true; token: string | null } | { ok: false; error: "invalid" | "taken" | "bad" }> => {
     const username = normalizeUsername(data.username ?? "");
     if (usernameError(username)) return { ok: false, error: "invalid" };
@@ -134,6 +156,14 @@ export const signUpHandle = createServerFn({ method: "POST" })
           await snapshotVault(sql);
         } catch {
           /* vault is best-effort */
+        }
+        if (data.device) {
+          try {
+            const { rememberDevice } = await import("@/lib/desk/password");
+            await rememberDevice(userId, data.device);
+          } catch {
+            /* device trust is best-effort */
+          }
         }
       }
       const token =

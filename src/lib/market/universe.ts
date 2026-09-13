@@ -29,6 +29,15 @@ export function isCrypto(symbol: string) {
   return UNIVERSE.find((t) => t.symbol === symbol)?.cls === "crypto";
 }
 
+export type DeskSector = "crypto" | "metals" | "equities";
+
+export function sectorOf(symbol: string): DeskSector {
+  const cls = UNIVERSE.find((t) => t.symbol === symbol)?.cls;
+  if (cls === "crypto") return "crypto";
+  if (cls === "metal") return "metals";
+  return "equities";
+}
+
 export function isLot(symbol: string) {
   const cls = UNIVERSE.find((t) => t.symbol === symbol)?.cls;
   return cls === "crypto" || cls === "metal";

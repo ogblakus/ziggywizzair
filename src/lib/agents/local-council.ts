@@ -1,13 +1,23 @@
 import { AGENTS, type AgentId } from "@/lib/agents/personas";
 import { gateCouncilOrder } from "@/lib/agents/quorum";
+import {
+  ashRank,
+  irisClipPct,
+  kaiKind,
+  kaiLimit,
+  LEAN_SCORE,
+  MAX_OPEN_LEGS,
+  rankKai,
+  vesperRank,
+  ACT_SCORE,
+  type Idea,
+} from "@/lib/agents/pipeline";
 import { isWhyOpenedQuestion, replyLocale } from "@/lib/ai/ask-lang";
 import { isAddOn, pullbackInTrend, teamBlocks } from "@/lib/desk/holds";
 import { clipPctOf, markOf, qtyForClip } from "@/lib/desk/size";
 import type { Locale } from "@/lib/i18n/catalog";
 import { macroHint, sectorBoard, sentimentBias } from "@/lib/market/macro";
 import type { CouncilResult, MacroTape, MarketSnapshot, ProposedOrder, SentimentReport, TickerSnapshot } from "@/lib/types";
-
-let councilRound = 0;
 
 function L(locale: Locale, en: string, pl: string) {
   return locale === "pl" ? pl : en;
@@ -26,30 +36,15 @@ function damianReport(
 } {
   const board = sectorBoard(opts?.macro, opts?.tickers ?? [], locale);
   const hint = macroHint(opts?.macro, locale);
-  const thesis = hint ? `${board.summary}. ${hint}` : board.summary;
+  const thesis = hint ? `${hint}. ${board.summary}` : board.summary;
   return {
-    thesis: thesis.slice(0, 280),
+    thesis: thesis.slice(0, 340),
     vote: "hold",
     symbol: null,
     conviction: 0.55,
     sizePct: 0,
     sentiment: board,
   };
-}
-
-function rank(tickers: TickerSnapshot[], pred: (t: TickerSnapshot) => number) {
-  return [...tickers].sort((a, b) => pred(b) - pred(a));
-}
-
-function at(list: TickerSnapshot[], i: number) {
-  return list[Math.min(Math.max(i, 0), list.length - 1)];
-}
-
-function skipLast(list: TickerSnapshot[], lastSymbol: string | null | undefined, i = 0) {
-  if (!lastSymbol) return at(list, i);
-  const filtered = list.filter((t) => t.symbol !== lastSymbol);
-  if (!filtered.length) return at(list, i);
-  return at(filtered, i);
 }
 
 function sessionLabel(name: NonNullable<TickerSnapshot["session"]>["name"], locale: Locale) {
@@ -168,10 +163,7 @@ export function localCouncil(
   locale: Locale = "en",
   _seenNews: string[] = [],
 ): CouncilResult {
-  councilRound += 1;
-  const v = councilRound % 3;
   const tickers = snap.tickers.filter((t) => t.price > 0);
-  const lastSym = last?.order?.symbol ?? last?.agents.find((a) => a.vote !== "hold")?.symbol ?? null;
 
   if (!tickers.length) {
     return {
@@ -190,47 +182,54 @@ export function localCouncil(
     };
   }
 
-  const byMom = rank(tickers, (t) => t.changePct + (t.rvol && t.rvol > 1 ? 0.15 : 0));
-  const byWash = rank(tickers, (t) => -t.vsSma);
-  const byStretch = rank(tickers, (t) => t.vsSma);
-  const byRsiLow = rank(tickers, (t) => -t.rsi);
-  const byRsiHigh = rank(tickers, (t) => t.rsi);
-
-  const hot = skipLast(byMom, lastSym, v === 2 ? 1 : 0) ?? byMom[0]!;
-  const washed = byWash.find((t) => t.vsSma < -0.55 && t.rsi < 42) ?? skipLast(byWash, lastSym, v === 0 ? 0 : 1)!;
-  const stretched = byStretch.find((t) => t.vsSma > 0.85 && t.rsi > 62) ?? skipLast(byStretch, lastSym, v === 2 ? 0 : 1)!;
-  const openPos = snap.book.positions.filter((p) => Math.abs(p.qty) > 1e-8);
   const of = (sym: string) => tickers.find((t) => t.symbol === sym);
+  const damian = damianReport(locale, { macro: snap.macro, tickers });
+  const sentiment = damian.sentiment;
+  const weather = weatherFromSentiment(sentiment);
+  const vesperIdeas = vesperRank(tickers, sentiment);
+  const ashIdeas = ashRank(tickers, sentiment);
+
+  const openPos = snap.book.positions.filter((p) => Math.abs(p.qty) > 1e-8);
   const stalled = openPos.find((p) => {
+    if (p.teamLock) return false;
     const tk = of(p.symbol);
     if (!tk) return false;
     if (p.qty > 0) return tk.changePct < -0.9 || (p.pnlPct < -0.8 && tk.vsSma < 0);
     return tk.changePct > 0.9 || (p.pnlPct < -0.8 && tk.vsSma > 0);
   });
   const stalledTape = stalled ? of(stalled.symbol) : undefined;
-
-  const vesperBuy = hot.changePct > 0.35 && hot.vsSma > 0.15 && hot.rsi >= 50 && hot.rsi < 78;
-  const vesperCut = Boolean(stalled && stalledTape);
-  const ashBuy = washed.vsSma < -0.55 && washed.rsi < 42;
-  const ashSell = stretched.vsSma > 0.85 && stretched.rsi > 62;
-
-  const vesperPick =
-    vesperCut && stalled
-      ? { side: (stalled.qty < 0 ? "buy" : "sell") as "buy" | "sell", symbol: stalled.symbol, cut: true }
-      : vesperBuy
-        ? { side: "buy" as const, symbol: hot.symbol, cut: false }
-        : null;
-  const ashPick = ashBuy
-    ? { side: "buy" as const, symbol: washed.symbol, cut: false }
-    : ashSell
-      ? { side: "sell" as const, symbol: stretched.symbol, cut: false }
+  const cutIdea: Idea | null =
+    stalled && stalledTape
+      ? {
+          scout: "vesper",
+          symbol: stalled.symbol,
+          side: stalled.qty < 0 ? "buy" : "sell",
+          score: 88,
+          cut: true,
+        }
       : null;
-  const ideas = [vesperPick, ashPick].filter((x): x is NonNullable<typeof vesperPick> => Boolean(x));
 
-  let sentiment: SentimentReport = sectorBoard(snap.macro, tickers, locale);
+  const vesperLead = cutIdea ?? vesperIdeas[0] ?? null;
+  const ashLead = ashIdeas[0] ?? null;
+  const allIdeas = [...(cutIdea ? [cutIdea] : []), ...vesperIdeas, ...ashIdeas];
+  const kaiRows = rankKai(allIdeas, of);
+  const kaiPick = kaiRows.find((r) => r.kind === "ready" || r.kind === "wait") ?? kaiRows[0] ?? null;
+  const vesperVote =
+    (kaiPick && vesperIdeas.find((i) => i.symbol === kaiPick.idea.symbol && i.side === kaiPick.idea.side)) ??
+    vesperLead;
+  const ashVote =
+    (kaiPick && ashIdeas.find((i) => i.symbol === kaiPick.idea.symbol && i.side === kaiPick.idea.side)) ?? ashLead;
+
+  function listTalk(ideas: Idea[]) {
+    if (!ideas.length) return "";
+    return ideas
+      .map((i) => `${i.symbol} ${i.side === "buy" ? L(locale, "long", "długa") : L(locale, "short", "krótka")} ${i.score.toFixed(0)}`)
+      .join(" · ");
+  }
+
   const agents: CouncilResult["agents"] = AGENTS.map((p) => {
     if (p.id === "vesper") {
-      if (vesperCut && stalled && stalledTape) {
+      if (cutIdea && stalled && stalledTape) {
         const cover = stalled.qty < 0;
         return {
           id: p.id,
@@ -245,68 +244,62 @@ export function localCouncil(
           sizePct: 0,
         };
       }
-      if (vesperBuy) {
+      if (vesperVote && !cutIdea) {
+        const tk = of(vesperVote.symbol)!;
+        const more = listTalk(vesperIdeas.filter((i) => i.symbol !== vesperVote.symbol));
         return {
           id: p.id,
           thesis: L(
             locale,
-            `${nums(hot, locale)}. Leader — I want a small long, not a big bet.`,
-            `${nums(hot, locale)}. Lider — chcę małą długą, nie duży zakład.`,
+            `${nums(tk, locale)}. Score ${vesperVote.score.toFixed(0)}${vesperVote.score >= ACT_SCORE ? " — expansion I will ride" : " — lean, not a full run"}${more ? `. Also watching ${more}` : ""}.`,
+            `${nums(tk, locale)}. Wynik ${vesperVote.score.toFixed(0)}${vesperVote.score >= ACT_SCORE ? " — ekspansja, którą chcę jechać" : " — nachylenie, nie pełny bieg"}${more ? `. Na oku też ${more}` : ""}.`,
           ),
-          vote: "buy" as const,
-          symbol: hot.symbol,
-          conviction: Math.min(0.88, 0.42 + hot.changePct / 4),
-          sizePct: 5,
+          vote: vesperVote.side,
+          symbol: vesperVote.symbol,
+          conviction: Math.min(0.9, 0.4 + vesperVote.score / 140),
+          sizePct: vesperVote.score >= ACT_SCORE ? 5 : 3,
         };
       }
+      const hot = [...tickers].sort((a, b) => b.changePct - a.changePct)[0];
       return {
         id: p.id,
         thesis: L(
           locale,
-          `No trend. Hottest print is ${nums(hot, locale)} — noise, not a signal (need >+0.35% from open, vs SMA20 >+0.15, RSI 50–78).`,
-          `Nie ma trendu. Najmocniejszy ruch: ${nums(hot, locale)} — szum, nie sygnał (chcę >+0,35% od otwarcia, vs SMA20 >+0,15, RSI 50–78).`,
+          `Nothing clearing ${LEAN_SCORE} after Damian's weather. Hottest print is ${hot ? nums(hot, locale) : "—"}.`,
+          `Nic nie przebija ${LEAN_SCORE} po pogodzie Damiana. Najmocniejszy ruch: ${hot ? nums(hot, locale) : "—"}.`,
         ),
         vote: "hold" as const,
-        symbol: hot.symbol,
+        symbol: hot?.symbol ?? null,
         conviction: 0.38,
         sizePct: 0,
       };
     }
     if (p.id === "ash") {
-      if (ashBuy) {
+      if (ashVote) {
+        const tk = of(ashVote.symbol)!;
+        const more = listTalk(ashIdeas.filter((i) => i.symbol !== ashVote.symbol));
+        const fade = ashVote.side === "buy";
         return {
           id: p.id,
           thesis: L(
             locale,
-            `${nums(washed, locale)}. Washed (vs SMA20 < −0.55 and RSI < 42) — one clip, no averaging down.`,
-            `${nums(washed, locale)}. Przecena (vs SMA20 < −0,55 i RSI < 42) — jeden clip, bez dokładania.`,
+            `${nums(tk, locale)}. Score ${ashVote.score.toFixed(0)} — ${fade ? "wash, one clip" : "stretch, I sell strength"}${more ? `. Also ${more}` : ""}.`,
+            `${nums(tk, locale)}. Wynik ${ashVote.score.toFixed(0)} — ${fade ? "przecena, jeden clip" : "wyciągnięcie, sprzedaję siłę"}${more ? `. Też ${more}` : ""}.`,
           ),
-          vote: "buy" as const,
-          symbol: washed.symbol,
-          conviction: Math.min(0.84, 0.4 + Math.abs(washed.vsSma) / 3),
+          vote: ashVote.side,
+          symbol: ashVote.symbol,
+          conviction: Math.min(0.88, 0.4 + ashVote.score / 140),
           sizePct: 4,
         };
       }
-      if (ashSell) {
-        return {
-          id: p.id,
-          thesis: L(
-            locale,
-            `${nums(stretched, locale)}. Too far (vs SMA20 > +0.85 and RSI > 62) — I sell strength, I don't chase.`,
-            `${nums(stretched, locale)}. Za daleko (vs SMA20 > +0,85 i RSI > 62) — sprzedaję siłę, nie gonię.`,
-          ),
-          vote: "sell" as const,
-          symbol: stretched.symbol,
-          conviction: 0.64,
-          sizePct: 4,
-        };
-      }
+      const low = [...tickers].sort((a, b) => a.rsi - b.rsi)[0];
+      const high = [...tickers].sort((a, b) => b.rsi - a.rsi)[0];
       return {
         id: p.id,
         thesis: L(
           locale,
-          `Extremes: ${byRsiLow[0] ? nums(byRsiLow[0], locale) : "—"} vs ${byRsiHigh[0] ? nums(byRsiHigh[0], locale) : "—"}. Still not a fade I will size (need vs SMA20 < −0.55 / > +0.85).`,
-          `Skrajności: ${byRsiLow[0] ? nums(byRsiLow[0], locale) : "—"} vs ${byRsiHigh[0] ? nums(byRsiHigh[0], locale) : "—"}. Nadal za mało na fade (chcę vs SMA20 < −0,55 / > +0,85).`,
+          `Extremes: ${low ? nums(low, locale) : "—"} vs ${high ? nums(high, locale) : "—"}. Nothing I will fade yet.`,
+          `Skrajności: ${low ? nums(low, locale) : "—"} vs ${high ? nums(high, locale) : "—"}. Jeszcze nic do fade.`,
         ),
         vote: "hold" as const,
         symbol: null,
@@ -315,7 +308,7 @@ export function localCouncil(
       };
     }
     if (p.id === "kai") {
-      if (vesperPick?.cut && stalled && stalledTape) {
+      if (cutIdea && stalled && stalledTape) {
         return {
           id: p.id,
           thesis: L(
@@ -323,78 +316,51 @@ export function localCouncil(
             `${stalled.symbol} is done. Flatten now — I don't wait for a limit to get out.`,
             `${stalled.symbol} się skończyło. Zdejmuję teraz — z zejścia nie czekam na limit.`,
           ),
-          vote: vesperPick.side,
+          vote: cutIdea.side,
           symbol: stalled.symbol,
           conviction: 0.6,
           sizePct: 0,
         };
       }
-      const fresh = ideas.filter((idea) => !idea.cut);
-      const stamped = fresh
-        .map((idea) => {
-          const tk = of(idea.symbol);
-          if (!tk) return null;
-          if (tk.rvol != null && tk.rvol < 0.55) {
-            return { idea, tk, kind: "thin" as const, limit: undefined as number | undefined };
-          }
-          const kind = idea.side === "buy" ? tk.buySetup : tk.sellSetup;
-          const limit = idea.side === "buy" ? tk.buyLimit : tk.sellLimit;
-          return { idea, tk, kind: kind ?? "none", limit: limit ?? undefined };
-        })
-        .filter((x): x is NonNullable<typeof x> => Boolean(x));
-      const ready = stamped.filter((x) => x.kind === "pullback" && x.limit);
-      ready.sort((a, b) => (b.tk.rvol ?? 1) - (a.tk.rvol ?? 1));
-      const best = ready[0];
-      if (best && best.limit) {
+      if (kaiPick && (kaiPick.kind === "ready" || kaiPick.kind === "wait")) {
+        const extra =
+          kaiPick.kind === "wait"
+            ? L(
+                locale,
+                " No tagging FVG yet — I rest a limit and wait, I don't veto the direction.",
+                " Jeszcze nie ma FVG pod ceną — kładę limit i czekam, kierunku nie kasuję.",
+              )
+            : "";
         return {
           id: p.id,
-          thesis: kaiLine(best.tk, best.idea.side, locale),
-          vote: best.idea.side,
-          symbol: best.idea.symbol,
-          conviction: 0.66,
+          thesis: kaiLine(kaiPick.tk, kaiPick.idea.side, locale) + extra,
+          vote: kaiPick.idea.side,
+          symbol: kaiPick.idea.symbol,
+          conviction: kaiPick.kind === "ready" ? 0.7 : 0.55,
           sizePct: 3,
         };
       }
-      const thin = stamped.find((x) => x.kind === "thin");
-      if (thin) {
+      if (kaiPick?.kind === "thin") {
         return {
           id: p.id,
           thesis: L(
             locale,
-            `${thin.idea.symbol}: rvol ${thin.tk.rvol?.toFixed(2)} (need ≥ 0.55). Dead tape — no limit.`,
-            `${thin.idea.symbol}: rvol ${thin.tk.rvol?.toFixed(2)} (chcę ≥ 0,55). Martwy obrót — bez limitu.`,
+            `${kaiPick.idea.symbol}: rvol ${kaiPick.tk.rvol?.toFixed(2)} (need ≥ 0.55). Dead tape — hard veto.`,
+            `${kaiPick.idea.symbol}: rvol ${kaiPick.tk.rvol?.toFixed(2)} (chcę ≥ 0,55). Martwy obrót — twardy veto.`,
           ),
           vote: "hold" as const,
-          symbol: thin.idea.symbol,
+          symbol: kaiPick.idea.symbol,
           conviction: 0.5,
           sizePct: 0,
         };
       }
-      const chase = stamped.find((x) => x.kind === "chase");
-      if (chase) {
+      if (kaiPick?.kind === "chase") {
         return {
           id: p.id,
-          thesis: kaiLine(chase.tk, chase.idea.side, locale),
+          thesis: kaiLine(kaiPick.tk, kaiPick.idea.side, locale),
           vote: "hold" as const,
-          symbol: chase.idea.symbol,
+          symbol: kaiPick.idea.symbol,
           conviction: 0.55,
-          sizePct: 0,
-        };
-      }
-      if (fresh[0]) {
-        const tk = of(fresh[0].symbol);
-        return {
-          id: p.id,
-          thesis: tk
-            ? kaiLine(tk, fresh[0].side, locale)
-            : L(
-                locale,
-                `${fresh[0].symbol}: 15m/1h/4h has no pullback (18–62% off the extreme) and no tagging FVG. No limit.`,
-                `${fresh[0].symbol}: 15m/1h/4h bez cofnięcia (18–62% od ekstremum) i bez FVG pod ceną. Bez limitu.`,
-              ),
-          vote: "hold" as const,
-          symbol: fresh[0].symbol,
-          conviction: 0.4,
           sizePct: 0,
         };
       }
@@ -402,8 +368,8 @@ export function localCouncil(
         id: p.id,
         thesis: L(
           locale,
-          `No name this round. I read 15m / 1h / 4h (FVG on the highest TF that price tags, else a 15m pullback, rvol ≥ 0.55). 1m is noise.`,
-          `Nikt nie wskazał spółki. Czytam 15m / 1h / 4h (FVG na najwyższym TF, które cena testuje, albo cofnięcie 15m, rvol ≥ 0,55). 1m to szum.`,
+          `No name this round. I read 15m / 1h / 4h. Ready limit, rest a wait-limit, or veto chase/thin tape. 1m is noise.`,
+          `Nikt nie wskazał spółki. Czytam 15m / 1h / 4h. Limit gotowy, limit czekający, albo veto na pogoń/martwy obrót. 1m to szum.`,
         ),
         vote: "hold" as const,
         symbol: null,
@@ -412,14 +378,12 @@ export function localCouncil(
       };
     }
     if (p.id === "damian") {
-      const report = damianReport(locale, { macro: snap.macro, tickers });
-      sentiment = report.sentiment;
       return {
         id: p.id,
-        thesis: report.thesis,
+        thesis: damian.thesis,
         vote: "hold" as const,
         symbol: null,
-        conviction: report.conviction,
+        conviction: damian.conviction,
         sizePct: 0,
       };
     }
@@ -437,13 +401,13 @@ export function localCouncil(
         : names
           ? L(
               locale,
-              `Cash ${cashPct.toFixed(0)}% · open ${names}. I size 2–6% from Damian's weather. Adds only on a pullback, max two a day. Fees ≤ 5% round-trip.`,
-              `Gotówka ${cashPct.toFixed(0)}% · otwarte: ${names}. Wielkość 2–6% od pogody Damiana. Dokładki tylko na korekcie, max dwie dziennie. Opłaty ≤ 5% za otwarcie i zamknięcie.`,
+              `Cash ${cashPct.toFixed(0)}% · open ${names}. I size 2–6% from Damian's weather. Max two legs plus one resting limit. Adds only on a pullback, max two a day.`,
+              `Gotówka ${cashPct.toFixed(0)}% · otwarte: ${names}. Wielkość 2–6% od pogody Damiana. Max dwie nogi plus jeden limit w kolejce. Dokładki tylko na korekcie, max dwie dziennie.`,
             )
           : L(
               locale,
-              `Cash is ${cashPct.toFixed(0)}% of equity. I size 2–6% from Damian's weather. Fees ≤ 5% round-trip.`,
-              `Gotówka to ${cashPct.toFixed(0)}% kapitału. Wielkość 2–6% od pogody Damiana. Opłaty ≤ 5% za otwarcie i zamknięcie.`,
+              `Cash is ${cashPct.toFixed(0)}% of equity. I size 2–6% from Damian's weather. Two legs + one wait-limit. Fees ≤ 5% round-trip.`,
+              `Gotówka to ${cashPct.toFixed(0)}% kapitału. Wielkość 2–6% od pogody Damiana. Dwie nogi + jeden limit czekający. Opłaty ≤ 5%.`,
             ),
       vote: "hold" as const,
       symbol: null,
@@ -454,16 +418,13 @@ export function localCouncil(
 
   const iris = agents.find((a) => a.id === "iris")!;
   const kai = agents.find((a) => a.id === "kai")!;
-  const weather = weatherFromSentiment(sentiment);
   const scouts = agents.filter((a) => (a.id === "vesper" || a.id === "ash") && a.vote !== "hold" && a.symbol);
   const kaiReady = kai.vote !== "hold" && kai.symbol && (kai.vote === "buy" || kai.vote === "sell");
+  const openCount = openPos.filter((p) => !p.teamLock).length;
+  const bookRiskOff =
+    iris.thesis.includes("No new risk") || iris.thesis.includes("Bez nowego ryzyka");
 
-  const mood: CouncilResult["mood"] =
-    iris.thesis.includes("No new risk") || iris.thesis.includes("Bez nowego ryzyka")
-      ? "risk-off"
-      : kaiReady
-        ? "risk-on"
-        : "cautious";
+  const mood: CouncilResult["mood"] = bookRiskOff ? "risk-off" : kaiReady ? "risk-on" : "cautious";
 
   let order: ProposedOrder | null = null;
   const cut = scouts.find((a) => {
@@ -492,6 +453,12 @@ export function localCouncil(
       side,
     );
     const tk = tickers.find((x) => x.symbol === symbol);
+    const kind = tk ? kaiKind(tk, side) : "none";
+    const alreadyWorking = Boolean(snap.book.working);
+    const held = snap.book.positions.find((p) => p.symbol === symbol);
+    const flattening = Boolean(
+      held && ((held.qty > 0 && side === "sell") || (held.qty < 0 && side === "buy")),
+    );
     if (repeat) {
       iris.thesis = L(
         locale,
@@ -504,6 +471,33 @@ export function localCouncil(
         `${symbol} is locked — you own this trade. I will not add or close.`,
         `${symbol} jest zablokowane — to Twoja pozycja. Nie dokładam i nie zamykam.`,
       );
+    } else if (flattening && held) {
+      order = {
+        side,
+        symbol,
+        qty: Math.abs(held.qty),
+        rationale: L(
+          locale,
+          `Iris flattens ${symbol} — the move stalled.`,
+          `Iris zdejmuje ${symbol} — ruch stanął.`,
+        ),
+      };
+      iris.vote = side;
+      iris.symbol = symbol;
+      iris.sizePct = 0;
+      iris.thesis = order.rationale;
+    } else if (!adding && openCount >= MAX_OPEN_LEGS) {
+      iris.thesis = L(
+        locale,
+        `Two legs already on. I will not open a third — only a cut or an add on a pullback.`,
+        `Dwie nogi już są. Trzeciej nie otwieram — tylko zejście albo dokładka na korekcie.`,
+      );
+    } else if (!adding && alreadyWorking && kind !== "ready") {
+      iris.thesis = L(
+        locale,
+        `A limit is already resting. I keep that queue — no second wait-limit.`,
+        `Limit już czeka. Zostawiam tę kolejkę — bez drugiego czekającego limitu.`,
+      );
     } else if (adding && tk && !pullbackInTrend(side, tk.vsSma, tk.rsi, tk.changePct)) {
       iris.thesis = L(
         locale,
@@ -511,14 +505,11 @@ export function localCouncil(
         `${symbol} nie jest na końcu korekty. Dokładam tylko tam, nie w wyciągnięcie.`,
       );
     } else if (tk) {
-      const pctWanted = Math.min(
-        6,
-        Math.max(2, (card?.sizePct ?? Math.max(lead.sizePct, 3)) * (1 + weather.bias * 0.4)),
-      );
+      const pctWanted = irisClipPct(weather.bias, openCount, adding);
       const px = markOf(tk);
-      const qty = sizeQty(snap.book.equity, adding ? Math.min(pctWanted, 3) : pctWanted, tk);
+      const qty = sizeQty(snap.book.equity, pctWanted, tk);
       const pct = clipPctOf(qty, px, snap.book.equity);
-      const limit = side === "buy" ? tk.buyLimit : tk.sellLimit;
+      const limit = kaiPick?.idea.symbol === symbol ? kaiPick.limit : kaiLimit(tk, side);
       if (qty > 0) {
         order = {
           side,
@@ -558,8 +549,8 @@ export function localCouncil(
   } else if (scouts.length) {
     iris.thesis = L(
       locale,
-      `Vesper/Ash have a name, but 15m/1h/4h is not an entry yet (need a tagging FVG or a 15m pullback 18–62%, and rvol ≥ 0.55). Waiting.`,
-      `Vesper/Ash mają spółkę, ale 15m/1h/4h nie daje wejścia (potrzeba FVG pod ceną albo cofnięcia 15m 18–62% i rvol ≥ 0,55). Czekamy.`,
+      `Vesper/Ash have a name, but Kai vetoed chase or dead tape. Waiting.`,
+      `Vesper/Ash mają spółkę, ale Kai zablokował pogoń albo martwy obrót. Czekamy.`,
     );
   }
 
@@ -574,10 +565,10 @@ export function localCouncil(
       : order
         ? L(
             locale,
-            `Limit on ${order.side.toUpperCase()} ${order.symbol}. Iris sized from Damian's weather.`,
-            `Limit ${order.side === "buy" ? "KUP" : "SPRZEDAJ"} ${order.symbol}. Iris dała wielkość od pogody Damiana.`,
+            `${order.limitPx ? "Limit" : "Ticket"} on ${order.side.toUpperCase()} ${order.symbol}. Iris sized from Damian's weather.`,
+            `${order.limitPx ? "Limit" : "Zlecenie"} ${order.side === "buy" ? "KUP" : "SPRZEDAJ"} ${order.symbol}. Iris dała wielkość od pogody Damiana.`,
           )
-        : L(locale, "No 15m/1h/4h setup this round. Stay in cash.", "Brak setupu na 15m/1h/4h. Zostajemy w gotówce.");
+        : L(locale, "No ticket this round. Stay in cash.", "Brak biletu w tej rundzie. Zostajemy w gotówce.");
 
   return { mood, summary, agents, order, sentiment };
 }
@@ -959,8 +950,8 @@ export function localAsk(
       speaker: "iris",
       text: L(
         loc,
-        `${hold || L(loc, "Nothing open that I need to size.", "Nic otwartego do liczenia wielkości.")} Vesper hunts trend, Ash hunts extremes — they are not voting against each other. I size from Damian's weather; Kai puts the limit on last, or we wait.\n\nA normal trade is a few hours. Only a working name may stay a few days, and I allow two add-ons a day, only on a pullback.`,
-        `${hold || "Nic otwartego do liczenia wielkości."} Vesper szuka trendu, Ash skrajności — nie głosują przeciw sobie. Wielkość liczę od pogody Damiana; Kai na końcu stawia limit, albo czekamy.\n\nZwykły trade to kilka godzin. Tylko działająca noga może zostać kilka dni, a dokładki — max dwie dziennie i tylko na korekcie.`,
+        `${hold || L(loc, "Nothing open that I need to size.", "Nic otwartego do liczenia wielkości.")} Vesper and Ash rank names on their own scores. I size from Damian's weather; Kai rests a limit or waits — he does not veto the direction unless the tape is dead or it's a chase.\n\nTwo legs max, plus one resting limit. A normal trade is a few hours. Two add-ons a day, only on a pullback.`,
+        `${hold || "Nic otwartego do liczenia wielkości."} Vesper i Ash rankują spółki własnym wynikiem. Wielkość liczę od pogody Damiana; Kai kładzie limit albo czeka — kierunku nie kasuje, chyba że obrót martwy albo pogoń.\n\nMax dwie nogi plus jeden limit w kolejce. Zwykły trade to kilka godzin. Dokładki — max dwie dziennie i tylko na korekcie.`,
       ),
     };
   }

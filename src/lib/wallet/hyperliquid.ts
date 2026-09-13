@@ -98,6 +98,15 @@ function parseBars(raw: unknown, scale: number, keep: number): TickBar[] {
 
 const candleMemo: Partial<Record<HlInterval, { at: number; data: Record<string, TickBar[]>; ttl: number }>> = {};
 const candleWait: Partial<Record<HlInterval, Promise<Record<string, TickBar[]>>>> = {};
+const symbolWait = new Map<string, Promise<TickBar[]>>();
+
+const INTERVAL_SPEC: Record<HlInterval, { hours: number; keep: number; ttl: number }> = {
+  "1m": { hours: 3, keep: 90, ttl: 8_000 },
+  "5m": { hours: 8, keep: 90, ttl: 20_000 },
+  "15m": { hours: 26, keep: 96, ttl: 20_000 },
+  "1h": { hours: 96, keep: 80, ttl: 90_000 },
+  "4h": { hours: 240, keep: 60, ttl: 180_000 },
+};
 
 async function loadInterval(interval: HlInterval, hours: number, keep: number, ttl: number) {
   const now = Date.now();
@@ -109,22 +118,26 @@ async function loadInterval(interval: HlInterval, hours: number, keep: number, t
     const startTime = Date.now() - hours * 60 * 60 * 1000;
     const endTime = Date.now();
     const out: Record<string, TickBar[]> = { ...prev };
-    await Promise.all(
-      Object.entries(DESK_TO_PERP).map(async ([desk, row]) => {
-        try {
-          const payload: Record<string, unknown> = {
-            type: "candleSnapshot",
-            req: { coin: row.coin, interval, startTime, endTime },
-          };
-          if (row.dex) payload.dex = row.dex;
-          const raw = await hlInfo(payload, 15_000);
-          const series = parseBars(raw, row.scale ?? 1, keep);
-          if (series.length) out[desk] = series;
-        } catch {
-          /* keep previous pack */
-        }
-      }),
-    );
+    const rows = Object.entries(DESK_TO_PERP);
+    const limit = 3;
+    for (let i = 0; i < rows.length; i += limit) {
+      await Promise.all(
+        rows.slice(i, i + limit).map(async ([desk, row]) => {
+          try {
+            const payload: Record<string, unknown> = {
+              type: "candleSnapshot",
+              req: { coin: row.coin, interval, startTime, endTime },
+            };
+            if (row.dex) payload.dex = row.dex;
+            const raw = await hlInfo(payload, 15_000);
+            const series = parseBars(raw, row.scale ?? 1, keep);
+            if (series.length) out[desk] = series;
+          } catch {
+            /* keep previous pack */
+          }
+        }),
+      );
+    }
     if (Object.keys(out).length) candleMemo[interval] = { at: Date.now(), data: out, ttl };
     return out;
   })().finally(() => {
@@ -135,24 +148,72 @@ async function loadInterval(interval: HlInterval, hours: number, keep: number, t
 }
 
 export async function loadHlCandles(hours = 3): Promise<Record<string, TickBar[]>> {
-  return loadInterval("1m", hours, 90, 8_000);
+  const spec = INTERVAL_SPEC["1m"];
+  return loadInterval("1m", hours || spec.hours, spec.keep, spec.ttl);
 }
 
 export async function loadHlChart5(): Promise<Record<string, TickBar[]>> {
-  return loadInterval("5m", 8, 90, 20_000);
+  const spec = INTERVAL_SPEC["5m"];
+  return loadInterval("5m", spec.hours, spec.keep, spec.ttl);
 }
 
 export async function loadHlHtf(): Promise<Record<string, HtfPack>> {
   const [m15, h1, h4] = await Promise.all([
-    loadInterval("15m", 26, 96, 20_000),
-    loadInterval("1h", 96, 80, 90_000),
-    loadInterval("4h", 240, 60, 180_000),
+    loadInterval("15m", INTERVAL_SPEC["15m"].hours, INTERVAL_SPEC["15m"].keep, INTERVAL_SPEC["15m"].ttl),
+    loadInterval("1h", INTERVAL_SPEC["1h"].hours, INTERVAL_SPEC["1h"].keep, INTERVAL_SPEC["1h"].ttl),
+    loadInterval("4h", INTERVAL_SPEC["4h"].hours, INTERVAL_SPEC["4h"].keep, INTERVAL_SPEC["4h"].ttl),
   ]);
   const out: Record<string, HtfPack> = {};
   for (const desk of Object.keys(DESK_TO_PERP)) {
     out[desk] = { m15: m15[desk] ?? [], h1: h1[desk] ?? [], h4: h4[desk] ?? [] };
   }
   return out;
+}
+
+/** One coin, one interval — for instant chart switches. Does not wait on the rest of the board. */
+export async function loadHlSymbolCandles(
+  symbol: string,
+  interval: Extract<HlInterval, "1m" | "5m" | "15m">,
+): Promise<TickBar[]> {
+  const row = DESK_TO_PERP[symbol];
+  if (!row) return [];
+  const spec = INTERVAL_SPEC[interval];
+  const now = Date.now();
+  const hit = candleMemo[interval];
+  const cached = hit?.data[symbol];
+  const age = hit ? now - hit.at : Infinity;
+  if (cached && cached.length >= 2 && age < Math.max(spec.ttl, 120_000)) return cached;
+  const key = `${symbol}:${interval}`;
+  const inflight = symbolWait.get(key);
+  if (inflight) return inflight;
+  const run = (async () => {
+    try {
+      const payload: Record<string, unknown> = {
+        type: "candleSnapshot",
+        req: {
+          coin: row.coin,
+          interval,
+          startTime: now - spec.hours * 60 * 60 * 1000,
+          endTime: now,
+        },
+      };
+      if (row.dex) payload.dex = row.dex;
+      const raw = await hlInfo(payload, 4_000);
+      const series = parseBars(raw, row.scale ?? 1, spec.keep);
+      if (series.length) {
+        const prev = candleMemo[interval] ?? { at: 0, data: {}, ttl: spec.ttl };
+        candleMemo[interval] = { at: prev.at || now, data: { ...prev.data, [symbol]: series }, ttl: prev.ttl };
+        return series;
+      }
+    } catch {
+      /* keep cached */
+    }
+    return cached ?? [];
+  })().finally(() => {
+    symbolWait.delete(key);
+  });
+  symbolWait.set(key, run);
+  return run;
 }
 
 export type LivePerp = {

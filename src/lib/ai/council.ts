@@ -220,6 +220,9 @@ function compactSnap(snap: MarketSnapshot) {
         pnlPct: Number((p.pnlPct ?? 0).toFixed(2)),
         lock: Boolean(p.teamLock),
       })),
+      working: snap.book.working
+        ? { s: snap.book.working.symbol, side: snap.book.working.side, limitPx: snap.book.working.limitPx ?? null }
+        : null,
     },
     wire: (snap.headlines ?? []).slice(0, 6).map((h) => ({
       t: clipText(h.text, 160),
@@ -231,6 +234,7 @@ function compactSnap(snap: MarketSnapshot) {
           volChg: snap.macro.vixChg,
           dollar: snap.macro.dxy,
           dollarChg: snap.macro.dxyChg,
+          cryptoMcap: snap.macro.cryptoMcap,
           cryptoMcapPct: snap.macro.cryptoMcapPct,
           stocksPct: snap.macro.equityPct,
         }
@@ -281,16 +285,16 @@ export async function runCouncilSession(data: {
 
 You chair ZiggyWizzAir, a five-agent paper desk. The market tab chart is Hyperliquid 1m for the trader's eye. Agents NEVER analyse 1m — that is noise.
 Agents (do NOT write job titles like scout, executor, chain, zwiadowca, egzekutor, pieczęć, last in the chain — those are fixed):
-- vesper: momentum. Cite changePct, RSI 15m, vsSma 15m, rvol 15m. Rides expansion (need >+0.35% from open, vs SMA20 >+0.15, RSI 50–78). Cuts stalls.
-- ash: mean reversion. Cite vsSma 15m, RSI 15m, changePct. Buys wash (vs SMA20 < −0.55, RSI < 42). Sells stretch (vs SMA20 > +0.85, RSI > 62).
-- kai: setup only on a name already picked. Reads 15m, 1h, 4h only. Highest TF tagging FVG wins (bull: candle3 low > candle1 high). Else 15m pullback 18–62% off the extreme. Chase = last 12% of that TF range. rvol from 15m ≥ 0.55. Sets limitPx at FVG midpoint or a tick into the pullback. Cite TF, retrace%, FVG prices, rvol, limit. No limit = hold.
-- damian: NOT TA. Sector weather only (equities, crypto, metals, dollar, vol). No ticker vote.
-- iris: PM. Sizes 2–6% from Damian's weather. HARD RULE: round-trip fees ≤ 5%. Hold a few hours; promising a few days. Max TWO adds/day on a pullback. New entries need Vesper or Ash on direction AND Kai's limit. Cite size% and cash%. lock:true on a position = the user owns it — never close or add.
+- vesper: momentum. Cite changePct, RSI 15m, vsSma 15m, rvol 15m. Rank 1–3 names with a 0–100 score (lean ≥42, act ≥62). No hard AND of thresholds. Cuts stalls.
+- ash: mean reversion. Cite vsSma 15m, RSI 15m, changePct. Rank 1–3 fades (wash longs / stretch shorts) with the same score bands. They do not vote Vesper down.
+- kai: setup on a name already picked. Reads 15m, 1h, 4h only. Ready = tagging FVG or 15m pullback 18–62% → set limitPx. If direction is good but no tag yet, WAIT-LIMIT (limit a tick into the gap / 0.2% from mark) — do NOT hold. Hard veto only: chase (last 12% of the TF range) or rvol 15m < 0.55. Cite TF, retrace%, FVG, rvol, limit.
+- damian: NOT TA. Sector weather only (equities, crypto, metals, dollar, vol). Always cite daily crypto market cap in $ and % (cryptoMcap / cryptoMcapPct). No ticker vote. His weather FILTERS a class (bearish crypto does not silence gold).
+- iris: PM. Sizes 2–6% from Damian's weather and open count (0 legs full, 1 leg ~¾, 2 legs no new). HARD RULE: round-trip fees ≤ 5%. Max TWO filled legs plus ONE resting limit. Max TWO adds/day on a pullback. New entries need Vesper or Ash on direction AND Kai ready-or-wait (not a veto). Cite size% and cash%. lock:true on a position = the user owns it — never close or add.
 Rules:
 - SIZE qty from livePx. Charts on screen are 1m; your numbers are 15m/1h/4h.
 - thesis MUST cite TF + numbers (RSI 15m, vs SMA20 15m, rvol 15m, retrace on that TF, FVG high/low). Never role talk.
-- Skip dead tape (rvol 15m < 0.55).
-- order.limitPx required for new entries. Cuts omit limitPx.
+- Skip dead tape (rvol 15m < 0.55) as a Kai veto, not a silent hold on the whole desk.
+- order.limitPx required for new entries (ready or wait). Cuts omit limitPx.
 - Never claim a real broker fill.
 Return JSON only:
 {"session":{"mood":"risk-on"|"cautious"|"risk-off","summary":"one sentence"},

@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { getSql } from "@/lib/db";
 import { alertForProposal, alertsForFills, type FillAlert } from "@/lib/desk/alerts";
+import { alertKindAllowed, type AlertPrefs } from "@/lib/desk/alert-prefs";
 import type { ClosedTrade, Fill, ProposedOrder } from "@/lib/types";
 
 const FILE = join(process.cwd(), "data", "push.json");
@@ -164,11 +165,23 @@ async function pushAlerts(alerts: FillAlert[], userId?: string) {
   }
 }
 
-export async function notifyFills(fills: Fill[], closed: ClosedTrade[], userId?: string, locale: "en" | "pl" = "en") {
+export async function notifyFills(
+  fills: Fill[],
+  closed: ClosedTrade[],
+  userId?: string,
+  locale: "en" | "pl" = "en",
+  prefs?: AlertPrefs | null,
+) {
   if (!fills.length) return;
-  await pushAlerts(alertsForFills(fills, closed, locale), userId);
+  await pushAlerts(alertsForFills(fills, closed, locale, prefs), userId);
 }
 
-export async function notifyProposal(order: ProposedOrder, locale: "en" | "pl", userId?: string) {
+export async function notifyProposal(
+  order: ProposedOrder,
+  locale: "en" | "pl",
+  userId?: string,
+  prefs?: AlertPrefs | null,
+) {
+  if (!alertKindAllowed("proposal", prefs)) return;
   await pushAlerts([alertForProposal(order, locale)], userId);
 }

@@ -254,11 +254,21 @@ async function tickOne(userId: string, book: DeskBook, tape: LiveQuote[], now: n
     const fresh = saved.fills.filter((f) => !beforeIds.has(f.id));
     if (fresh.length) {
       void import("./push.server")
-        .then((m) => m.notifyFills(fresh, saved.closedTrades, userId, saved.locale === "pl" ? "pl" : "en"))
+        .then((m) =>
+          m.notifyFills(
+            fresh,
+            saved.closedTrades,
+            userId,
+            saved.locale === "pl" ? "pl" : "en",
+            saved.alertPrefs,
+          ),
+        )
         .catch(() => undefined);
     } else if (saved.proposal && !hadProposal && !saved.autopilot) {
       void import("./push.server")
-        .then((m) => m.notifyProposal(saved.proposal!, saved.locale === "pl" ? "pl" : "en", userId))
+        .then((m) =>
+          m.notifyProposal(saved.proposal!, saved.locale === "pl" ? "pl" : "en", userId, saved.alertPrefs),
+        )
         .catch(() => undefined);
     }
   }

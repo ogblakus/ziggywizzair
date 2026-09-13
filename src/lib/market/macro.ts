@@ -145,11 +145,39 @@ function n(v: number, d = 1) {
   return v.toFixed(d);
 }
 
+export function cryptoCapTalk(m: MacroTape | null | undefined, locale: "en" | "pl"): string {
+  const pl = locale === "pl";
+  const cap = m?.cryptoMcap;
+  const pct = m?.cryptoMcapPct;
+  const capStr =
+    cap != null && cap > 0
+      ? cap >= 1e12
+        ? `$${(cap / 1e12).toFixed(2)}T`
+        : cap >= 1e9
+          ? `$${(cap / 1e9).toFixed(0)}B`
+          : `$${cap.toFixed(0)}`
+      : null;
+  const pctStr =
+    pct != null && Number.isFinite(pct) ? `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%` : null;
+  if (capStr && pctStr) {
+    return pl ? `kapitalizacja krypto ${capStr}, ${pctStr} na dobę` : `crypto market cap ${capStr}, ${pctStr} on the day`;
+  }
+  if (pctStr) {
+    return pl ? `kapitalizacja krypto ${pctStr} na dobę` : `crypto market cap ${pctStr} on the day`;
+  }
+  if (capStr) {
+    return pl ? `kapitalizacja krypto ${capStr}` : `crypto market cap ${capStr}`;
+  }
+  return "";
+}
+
 /** One-line pulse Damian can speak. Skips unknown fields. No ticker dump. */
 export function macroHint(m: MacroTape | null | undefined, locale: "en" | "pl"): string {
   const p = classifyMacro(m);
   const bits: string[] = [];
   const pl = locale === "pl";
+  const cap = cryptoCapTalk(m, locale);
+  if (cap) bits.unshift(cap);
   if (p.vol === "hot") bits.push(pl ? "zmienność skoczyła" : "vol jumped");
   else if (p.vol === "calm") bits.push(pl ? "zmienność spokojna" : "vol is calm");
   else if (p.vol === "elevated") bits.push(pl ? "zmienność podwyższona" : "vol is elevated");
@@ -166,17 +194,12 @@ export function macroHint(m: MacroTape | null | undefined, locale: "en" | "pl"):
         : `dollar softer${m?.dxyChg != null ? ` (${n(m.dxyChg)}%)` : ""} — tailwind for BTC and metals`,
     );
   }
-  if (p.crypto === "in" && m?.cryptoMcapPct != null) {
-    bits.push(pl ? `kapitalizacja krypto +${n(m.cryptoMcapPct)}% na dobę` : `crypto market cap +${n(m.cryptoMcapPct)}% on the day`);
-  } else if (p.crypto === "out" && m?.cryptoMcapPct != null) {
-    bits.push(pl ? `kapitalizacja krypto ${n(m.cryptoMcapPct)}% na dobę` : `crypto market cap ${n(m.cryptoMcapPct)}% on the day`);
-  }
   if (p.equity === "up" && m?.equityPct != null) {
     bits.push(pl ? `szeroki rynek akcji +${n(m.equityPct)}%` : `broad stocks +${n(m.equityPct)}%`);
   } else if (p.equity === "down" && m?.equityPct != null) {
     bits.push(pl ? `szeroki rynek akcji ${n(m.equityPct)}%` : `broad stocks ${n(m.equityPct)}%`);
   }
-  return bits.slice(0, 2).join(". ");
+  return bits.slice(0, 3).join(". ");
 }
 
 function asStance(up: boolean, down: boolean): Stance {
@@ -222,9 +245,32 @@ export function sectorBoard(
       return pl ? "akcje bez kierunku" : "stocks have no one-way read";
     }
     if (id === "crypto") {
-      if (stance === "bullish") return pl ? "kapitalizacja krypto / BTC w górę, dolar nie dusi" : "crypto cap / BTC bid, dollar not squeezing";
-      if (stance === "bearish") return pl ? "krypto pod presją dolara albo odpływu" : "crypto under a firm dollar or outflows";
-      return pl ? "krypto w dwie strony" : "crypto two-way";
+      const cap = cryptoCapTalk(m, locale);
+      if (stance === "bullish") {
+        return cap
+          ? pl
+            ? `${cap} — dolar nie dusi`
+            : `${cap} — dollar not squeezing`
+          : pl
+            ? "kapitalizacja krypto / BTC w górę, dolar nie dusi"
+            : "crypto cap / BTC bid, dollar not squeezing";
+      }
+      if (stance === "bearish") {
+        return cap
+          ? pl
+            ? `${cap} — presja dolara albo odpływ`
+            : `${cap} — firm dollar or outflows`
+          : pl
+            ? "krypto pod presją dolara albo odpływu"
+            : "crypto under a firm dollar or outflows";
+      }
+      return cap
+        ? pl
+          ? `${cap} — krypto w dwie strony`
+          : `${cap} — crypto two-way`
+        : pl
+          ? "krypto w dwie strony"
+          : "crypto two-way";
     }
     if (id === "metals") {
       if (stance === "bullish") return pl ? "słabszy dolar sprzyja złotu i srebru" : "softer dollar helps gold and silver";
@@ -257,7 +303,7 @@ export function sectorBoard(
             s.id === "equities"
               ? pl ? "akcje" : "stocks"
               : s.id === "crypto"
-                ? "crypto"
+                ? pl ? "krypto" : "crypto"
                 : s.id === "metals"
                   ? pl ? "metale" : "metals"
                   : s.id === "dollar"

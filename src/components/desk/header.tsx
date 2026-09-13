@@ -47,15 +47,17 @@ export function DeskHeader({
 
   return (
     <header className="shrink-0 border-b border-border" data-mode={mode}>
-      <div className="flex h-12 items-center gap-2 overflow-hidden px-3 sm:h-14 sm:gap-3 sm:px-4">
-        <div className="flex min-w-0 shrink-0 items-center gap-2">
-          <PlaneMark className="size-7 sm:size-8" />
+      <div className="flex h-14 min-w-0 items-center gap-1.5 px-2.5 sm:gap-3 sm:px-4">
+        <div className="flex min-w-0 shrink items-center gap-2">
+          <PlaneMark className="size-8 shrink-0" />
           <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <h1 className="truncate text-xs font-semibold tracking-tight sm:text-sm">{APP_NAME}</h1>
+            <div className="flex min-w-0 items-center gap-1.5">
+              <h1 className="hidden truncate text-xs font-semibold tracking-tight min-[24rem]:block sm:text-sm">
+                {APP_NAME}
+              </h1>
               <span className="inline-flex items-center gap-1.5 text-2xs font-medium text-muted">
                 <span
-                  className={`size-1.5 rounded-full ${feed === "live" ? "live-dot bg-up" : feed === "stale" ? "bg-down" : "bg-subtle"}`}
+                  className={`size-1.5 shrink-0 rounded-full ${feed === "live" ? "live-dot bg-up" : feed === "stale" ? "bg-down" : "bg-subtle"}`}
                 />
               </span>
             </div>
@@ -65,8 +67,8 @@ export function DeskHeader({
 
         <ModeSwitch onRequestLive={requestLive} />
 
-        <div className="ml-auto flex min-w-0 items-center gap-1.5 sm:gap-3">
-          <LiveStats className={cn("hidden md:contents", focusChat && "md:hidden")} />
+        <div className="ml-auto flex min-w-0 items-center gap-1 sm:gap-3">
+          <LiveStats className={cn("hidden xl:flex xl:items-center xl:gap-3", focusChat && "xl:hidden")} />
 
           {onConvene ? <FloorControls onConvene={onConvene} className="hidden lg:flex" /> : null}
 
@@ -78,7 +80,8 @@ export function DeskHeader({
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
-                size="icon-sm"
+                size="icon"
+                className="size-11"
                 aria-label={t("nav.settings")}
                 onClick={() => setSettings(true)}
               >
@@ -91,14 +94,14 @@ export function DeskHeader({
       </div>
 
       {focusChat ? null : (
-        <div className="grid h-10 grid-cols-3 items-center gap-2 border-t border-border px-3 md:hidden">
+        <div className="grid h-11 grid-cols-3 items-center gap-2 border-t border-border px-3 xl:hidden">
           <LiveStats mobile />
         </div>
       )}
       {focusChat ? null : (
       <div
         className={cn(
-          "flex h-9 items-center gap-2 overflow-hidden border-t border-border px-3 sm:px-4",
+          "flex min-h-9 items-center gap-2 border-t border-border px-3 py-1.5 sm:px-4",
           mode === "live" ? "bg-down/5" : "bg-transparent",
         )}
       >
@@ -108,7 +111,7 @@ export function DeskHeader({
             mode === "live" ? "bg-down" : "bg-subtle",
           )}
         />
-        <p className="min-w-0 flex-1 truncate text-2xs leading-none text-muted">
+        <p className="min-w-0 flex-1 text-2xs leading-snug text-muted">
           {mode === "live"
             ? address
               ? t("mode.banner")
@@ -116,14 +119,14 @@ export function DeskHeader({
             : t("mode.demoBanner")}
         </p>
         {mode === "demo" ? (
-          <Button variant="secondary" size="sm" className="h-7 shrink-0 px-2.5 text-2xs" onClick={requestLive}>
+          <Button variant="secondary" size="sm" className="h-9 shrink-0 px-2.5 text-2xs" onClick={requestLive}>
             {t("mode.goLive")}
           </Button>
         ) : null}
       </div>
       )}
       <Dialog open={settings} onOpenChange={setSettings}>
-        <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-md">
+        <DialogContent className="max-h-[min(85dvh,calc(100dvh-2rem))] w-[min(28rem,calc(100vw-1.5rem))] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("nav.settings")}</DialogTitle>
           </DialogHeader>
@@ -156,7 +159,7 @@ function ModeSwitch({ onRequestLive }: { onRequestLive: () => void }) {
         aria-label={t("mode.demo")}
         aria-pressed={mode === "demo"}
         className={cn(
-          "flex h-8 items-center justify-center whitespace-nowrap rounded-md px-2.5 text-2xs font-medium sm:px-3 sm:text-xs",
+          "flex h-11 min-w-0 items-center justify-center whitespace-nowrap rounded-md px-1.5 text-2xs font-medium sm:min-w-[3.25rem] sm:px-3 sm:text-xs",
           mode === "demo" ? "bg-elevated text-fg" : "text-muted",
         )}
       >
@@ -168,7 +171,7 @@ function ModeSwitch({ onRequestLive }: { onRequestLive: () => void }) {
         aria-label={t("mode.live")}
         aria-pressed={mode === "live"}
         className={cn(
-          "flex h-8 items-center justify-center whitespace-nowrap rounded-md px-2.5 text-2xs font-medium sm:px-3 sm:text-xs",
+          "flex h-11 min-w-0 items-center justify-center whitespace-nowrap rounded-md px-1.5 text-2xs font-medium sm:min-w-[3.25rem] sm:px-3 sm:text-xs",
           mode === "live" ? "bg-elevated text-fg" : "text-muted",
         )}
       >
@@ -225,11 +228,11 @@ function LiveStats({ mobile, className }: { mobile?: boolean; className?: string
     return (
       <>
         <div>
-          <div className="text-2xs font-medium tracking-wide text-subtle uppercase">{equityLabel}</div>
+          <div className="text-2xs font-medium tracking-wide text-subtle uppercase truncate">{equityLabel}</div>
           <div className="font-mono text-sm tabular-nums">{money(equity)}</div>
         </div>
         <div>
-          <div className="text-2xs font-medium tracking-wide text-subtle uppercase">{cashLabel}</div>
+          <div className="text-2xs font-medium tracking-wide text-subtle uppercase truncate">{cashLabel}</div>
           <div className="font-mono text-sm tabular-nums text-muted">{money(cashShown)}</div>
         </div>
         <div className="text-right">
@@ -248,7 +251,7 @@ function LiveStats({ mobile, className }: { mobile?: boolean; className?: string
         value={mode === "live" ? money(pnl) : pct(pnlPct)}
         tone={signedClass(pnl)}
       />
-      <Stat label={cashLabel} value={money(cashShown)} muted className="hidden md:block" />
+      <Stat label={cashLabel} value={money(cashShown)} muted className="hidden xl:block" />
     </div>
   );
 }
@@ -268,7 +271,7 @@ function Stat({
 }) {
   return (
     <div className={className}>
-      <div className="text-2xs font-medium tracking-wide text-subtle uppercase">{label}</div>
+      <div className="text-2xs font-medium tracking-wide text-subtle uppercase truncate">{label}</div>
       <div className={`font-mono text-sm tabular-nums ${tone ?? (muted ? "text-muted" : "text-fg")}`}>
         {value}
       </div>

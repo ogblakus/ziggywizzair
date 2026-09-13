@@ -1,6 +1,7 @@
 import { AGENT_BY_ID } from "@/lib/agents/personas";
-import { reflectClosed } from "@/lib/agents/reflect";
+import { looksLikeReflection } from "@/lib/agents/reflect";
 import { getLocale, type Locale } from "@/lib/i18n";
+import { assetLabel } from "@/lib/i18n/labels";
 import { STARTING_CASH } from "@/lib/market/universe";
 import type {
   ClosedTrade,
@@ -156,6 +157,18 @@ export function humanCloseNote(row: ClosedTrade, locale: Locale = "pl"): string 
       : "Time was up. It was working so we let it run a few days, then flattened.";
   }
   if (
+    note === "close.stopLoss" ||
+    /^stop loss$/i.test(note)
+  ) {
+    return pl ? "Zadziałał stop loss — pozycja zamknięta na ustawionym poziomie." : "Stop loss hit — flattened at the level you set.";
+  }
+  if (
+    note === "close.takeProfit" ||
+    /^take profit$/i.test(note)
+  ) {
+    return pl ? "Zadziałał take profit — pozycja zamknięta na ustawionym poziomie." : "Take profit hit — flattened at the level you set.";
+  }
+  if (
     note === "close.contrary" ||
     /contrary signal/i.test(note) ||
     /przeciwny sygnał/i.test(note)
@@ -234,9 +247,10 @@ export function decorateClosed(
   priorFills: Fill[] = [],
   locale: Locale = getLocale(),
 ): ClosedTrade {
-  const agents = (lastCouncil?.agents ?? [])
+  const original = (lastCouncil?.agents ?? [])
     .filter((a) => a.thesis)
     .map((a) => ({ id: a.id, vote: a.vote, thesis: a.thesis, symbol: a.symbol }));
+  const agents = original.length ? original : closed.agents;
   const wantSide = closed.side === "short" ? "sell" : "buy";
   const openFill = priorFills
     .filter((f) => f.symbol === fill.symbol && f.side === wantSide && f.ts < fill.ts)
@@ -246,30 +260,38 @@ export function decorateClosed(
     source: closed.source ?? fill.source,
     openedAt: closed.openedAt ?? openFill?.ts,
     closeNote: fill.note ?? closed.closeNote,
-    agents: agents.length ? agents : closed.agents,
+    agents,
     entryNote: closed.entryNote ?? openFill?.note,
   };
-  const reflections = reflectClosed(withAgents, lastCouncil, locale);
   return {
     ...withAgents,
     closeNote: withAgents.closeNote,
-    analysis: explainTrade({ ...withAgents, agents: reflections }, locale),
-    agents: reflections,
+    analysis: explainTrade(withAgents, locale),
+    agents,
   };
 }
 
 export function explainTrade(row: ClosedTrade, locale: Locale = "pl"): string {
-  const agents = row.agents ?? [];
-  if (!agents.length) return row.analysis ?? "";
   const pl = locale === "pl";
-  const dir =
-    row.side === "short" ? (pl ? "sprzedaż" : "a short") : pl ? "kupno" : "a long";
+  const name = assetLabel(row.symbol, locale);
+  const want = row.side === "short" ? "sell" : "buy";
+  const dir = row.side === "short" ? (pl ? "sprzedaż" : "a short") : pl ? "kupno" : "a long";
+  const voters = (row.agents ?? []).filter(
+    (a) => a.vote === want && !looksLikeReflection(a.thesis ?? ""),
+  );
+  if (!voters.length) {
+    const pnl =
+      row.pnlPct != null ? `${row.pnlPct >= 0 ? "+" : ""}${row.pnlPct.toFixed(2)}%` : "";
+    return pl
+      ? `Pozycja ${dir} ${name}${pnl ? ` (${pnl})` : ""}. Rada nie zapisała głosów za tym kierunkiem — szczegóły są w uzasadnieniu wejścia.`
+      : `${dir[0].toUpperCase()}${dir.slice(1)} ${name}${pnl ? ` (${pnl})` : ""}. No recorded votes for this side — see the entry note.`;
+  }
   const head = pl
-    ? `Rada poszła w ${dir} ${row.symbol}, ponieważ:`
-    : `The desk went ${dir} ${row.symbol} because:`;
-  const lines = agents.map((a) => {
-    const name = AGENT_BY_ID[a.id]?.name ?? a.id;
-    return `• ${name}: ${a.thesis}`;
+    ? `Rada poszła w ${dir} ${name}, ponieważ:`
+    : `The desk went ${dir} ${name} because:`;
+  const lines = voters.map((a) => {
+    const who = AGENT_BY_ID[a.id]?.name ?? a.id;
+    return `• ${who}: ${polishDeskProse(a.thesis, locale)}`;
   });
   return [head, ...lines].join("\n");
 }

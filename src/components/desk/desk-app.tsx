@@ -26,6 +26,8 @@ import { installBootQuotes, liveAssets, preferServerBook, toDeskBook, useDesk, u
 import { bindTradingMode, useTradingMode } from "@/lib/trading-mode";
 import { useMarks } from "@/lib/marks-store";
 import { useCurrentUser } from "@/lib/auth/use-current-user";
+import { getDeviceToken } from "@/lib/desk/device";
+import { trustThisDevice } from "@/lib/desk/password";
 import { cn } from "@/lib/utils";
 import { useLocale, useT } from "@/lib/i18n";
 
@@ -100,6 +102,13 @@ export function DeskApp({ boot }: { boot: LiveMarketResult }) {
   const synced = useRef(false);
   const saving = useRef(false);
   const syncing = useRef(false);
+
+  useEffect(() => {
+    if (!user) return;
+    const device = getDeviceToken();
+    if (!device) return;
+    void trustThisDevice({ data: { device } }).catch(() => {});
+  }, [user]);
 
   useEffect(() => {
     markBootSplash();
@@ -510,30 +519,30 @@ export function DeskApp({ boot }: { boot: LiveMarketResult }) {
       {tab === "chat" ? null : <OpenedStrip />}
 
       {desktop ? (
-        <div className="grid min-h-0 flex-1 grid-cols-[16.5rem_minmax(0,1fr)_22rem] grid-rows-[minmax(0,1fr)_12rem] gap-3 overflow-hidden p-3">
-          <section className="row-span-2 min-h-0 overflow-hidden rounded-2xl bg-surface p-3 shadow-[var(--shadow-border)]">
+        <div className="grid min-h-0 flex-1 grid-cols-[minmax(11.5rem,14rem)_minmax(0,1fr)_minmax(17rem,20rem)] grid-rows-[minmax(0,1fr)_minmax(9rem,12rem)] gap-2 overflow-hidden p-2 xl:grid-cols-[16.5rem_minmax(0,1fr)_22rem] xl:grid-rows-[minmax(0,1fr)_12rem] xl:gap-3 xl:p-3">
+          <section className="row-span-2 min-h-0 overflow-hidden">
             <Watchlist />
           </section>
-          <section className="min-h-0 overflow-hidden rounded-2xl bg-surface p-4 shadow-[var(--shadow-border)]">
+          <section className="min-h-0 overflow-hidden">
             <MarketDesk />
           </section>
-          <section className="row-span-2 min-h-0 overflow-hidden rounded-2xl bg-surface p-3 shadow-[var(--shadow-border)]">
+          <section className="row-span-2 min-h-0 overflow-hidden">
             <Tabs
               value={side}
               onValueChange={(v) => setSide(v as "floor" | "portfolio" | "history" | "chat")}
-              className="flex h-full min-h-0 flex-col gap-3"
+              className="flex h-full min-h-0 flex-col gap-2 xl:gap-3"
             >
               <TabsList className="w-full shrink-0">
-                <TabsTrigger value="floor" className="px-1 text-2xs sm:text-xs">
+                <TabsTrigger value="floor" className="min-w-0 px-1 text-2xs leading-tight sm:text-xs">
                   {t("nav.floor")}
                 </TabsTrigger>
-                <TabsTrigger value="portfolio" className="px-1 text-2xs sm:text-xs">
+                <TabsTrigger value="portfolio" className="min-w-0 px-1 text-2xs leading-tight sm:text-xs">
                   {t("nav.portfolio")}
                 </TabsTrigger>
-                <TabsTrigger value="history" className="px-1 text-2xs sm:text-xs">
+                <TabsTrigger value="history" className="min-w-0 px-1 text-2xs leading-tight sm:text-xs">
                   {t("nav.history")}
                 </TabsTrigger>
-                <TabsTrigger value="chat" className="px-1 text-2xs sm:text-xs">
+                <TabsTrigger value="chat" className="min-w-0 px-1 text-2xs leading-tight sm:text-xs">
                   {t("floor.chat")}
                 </TabsTrigger>
               </TabsList>
@@ -550,44 +559,44 @@ export function DeskApp({ boot }: { boot: LiveMarketResult }) {
               </div>
             </Tabs>
           </section>
-          <section className="min-h-0 overflow-hidden rounded-2xl bg-surface p-3 shadow-[var(--shadow-border)]">
+          <section className="min-h-0 overflow-hidden">
             <TapePanel />
           </section>
         </div>
       ) : (
         <>
-          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3 pb-24">
+          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden px-3 pt-2 pb-[calc(4.75rem+env(safe-area-inset-bottom,0px))]">
             {tab === "market" ? (
-              <div className="flex min-h-0 flex-1 flex-col gap-3">
+              <div className="flex min-h-0 flex-1 flex-col gap-2">
                 <TickerStrip />
-                <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl bg-surface p-3 shadow-[var(--shadow-border)]">
+                <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
                   <MarketDesk />
                 </section>
               </div>
             ) : null}
             {tab === "portfolio" ? (
-              <section className="min-h-0 flex-1 overflow-hidden rounded-2xl bg-surface p-3 shadow-[var(--shadow-border)]">
+              <section className="min-h-0 flex-1 overflow-hidden">
                 <PortfolioPanel />
               </section>
             ) : null}
             {tab === "history" ? (
-              <section className="min-h-0 flex-1 overflow-hidden rounded-2xl bg-surface p-3 shadow-[var(--shadow-border)]">
+              <section className="min-h-0 flex-1 overflow-hidden">
                 <HistoryPanel />
               </section>
             ) : null}
             {tab === "floor" ? (
-              <section className="min-h-0 flex-1 overflow-hidden rounded-2xl bg-surface p-3 shadow-[var(--shadow-border)]">
+              <section className="min-h-0 flex-1 overflow-hidden">
                 <CouncilPanel onConvene={convene} />
               </section>
             ) : null}
             {tab === "chat" ? (
-              <section className="min-h-0 flex-1 overflow-hidden rounded-2xl bg-surface p-3 shadow-[var(--shadow-border)]">
+              <section className="min-h-0 flex-1 overflow-hidden">
                 <ChatPane onAsk={ask} />
               </section>
             ) : null}
           </div>
 
-          <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-bg/95 pb-[env(safe-area-inset-bottom)]">
+          <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-bg/95 pb-[env(safe-area-inset-bottom,0px)]">
             <ul className="grid grid-cols-5">
               {(
                 [
@@ -603,12 +612,12 @@ export function DeskApp({ boot }: { boot: LiveMarketResult }) {
                     type="button"
                     onClick={() => setTab(id)}
                     className={cn(
-                      "flex h-16 w-full flex-col items-center justify-center gap-0.5 px-0.5 text-center text-3xs font-medium leading-none tracking-tight whitespace-nowrap",
+                      "flex min-h-14 w-full flex-col items-center justify-center gap-1 px-1 py-2 text-center text-2xs font-medium leading-tight",
                       tab === id ? "text-fg" : "text-muted",
                     )}
                   >
-                    <Icon className="size-4" />
-                    {label}
+                    <Icon className="size-4 shrink-0" />
+                    <span className="max-w-full">{label}</span>
                   </button>
                 </li>
               ))}

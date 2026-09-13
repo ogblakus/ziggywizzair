@@ -3,11 +3,12 @@ import { ChevronDown } from "lucide-react";
 import { AGENT_BY_ID } from "@/lib/agents/personas";
 import { compactPrice, money, pct, signedClass } from "@/lib/format";
 import { explainTrade, humanCloseNote, humanEntryNote } from "@/lib/portfolio";
-import { reflectClosed } from "@/lib/agents/reflect";
+import { looksLikeReflection, reflectClosed } from "@/lib/agents/reflect";
 import { useDesk } from "@/lib/desk-store";
 import { useLocale, useT, type Locale } from "@/lib/i18n";
 import { useTradingMode } from "@/lib/trading-mode";
 import { useLiveWallet } from "@/lib/wallet/live-store";
+import type { ClosedTrade } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { assetLabel } from "@/lib/i18n/labels";
 
@@ -157,8 +158,8 @@ export function HistoryPanel() {
 function TradeBody({ row }: { row: ClosedTrade }) {
   const t = useT();
   const locale = useLocale();
+  const analysis = (row.analysis && !looksLikeReflection(row.analysis) ? row.analysis : "") || explainTrade(row, locale) || t("hist.none");
   const reflections = reflectClosed(row, null, locale);
-  const analysis = explainTrade({ ...row, agents: reflections }, locale) || t("hist.none");
   return (
     <div className="space-y-2 border-t border-border px-2.5 py-2 text-sm leading-relaxed">
       <p className="font-mono text-2xs text-muted tabular-nums">
@@ -197,7 +198,7 @@ function TradeBody({ row }: { row: ClosedTrade }) {
                     {t(a.vote === "buy" ? "vote.buy" : a.vote === "sell" ? "vote.sell" : "vote.hold")}
                   </span>
                 </p>
-                <p className="mt-0.5 text-2xs leading-relaxed text-muted">{a.thesis}</p>
+                <p className="mt-0.5 text-xs leading-relaxed text-muted">{a.thesis}</p>
               </li>
             ))}
           </ul>
@@ -213,7 +214,7 @@ function Block({ label, body }: { label: string; body: string }) {
   return (
     <div>
       <p className="text-2xs font-medium tracking-wide text-subtle uppercase">{label}</p>
-      <p className="mt-0.5 whitespace-pre-wrap text-xs leading-relaxed text-fg">{body}</p>
+      <p className="mt-0.5 whitespace-pre-wrap text-sm leading-relaxed text-fg">{body}</p>
     </div>
   );
 }

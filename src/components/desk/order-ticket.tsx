@@ -1,6 +1,7 @@
 import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { CloseTradeDialog } from "@/components/desk/opened-trades";
+import { StopsFields } from "@/components/desk/stops-fields";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { useT, txError, t as tt } from "@/lib/i18n";
 import { useTradingMode } from "@/lib/trading-mode";
 import { assetLabel } from "@/lib/i18n/labels";
+import { parseStop, stopSideError } from "@/lib/desk/stops";
 
 type SizeUnit = "qty" | "usd";
 const UNIT_KEY = "zw-ticket-unit";
@@ -83,12 +85,12 @@ function UnitWheel({
         const next: SizeUnit = el.scrollTop >= el.clientHeight / 2 ? "usd" : "qty";
         if (next !== unit) onUnit(next);
       }}
-      className="unit-wheel h-9 rounded-md bg-surface text-xs font-medium text-muted shadow-[var(--shadow-border)]"
+      className="unit-wheel h-11 rounded-md bg-surface text-xs font-medium text-muted shadow-[var(--shadow-border)]"
     >
-      <div id={`${id}-qty`} className="flex h-9 shrink-0 snap-start items-center justify-center">
+      <div id={`${id}-qty`} className="flex h-11 shrink-0 snap-start items-center justify-center">
         {qtyLabel}
       </div>
-      <div id={`${id}-usd`} className="flex h-9 shrink-0 snap-start items-center justify-center">
+      <div id={`${id}-usd`} className="flex h-11 shrink-0 snap-start items-center justify-center">
         {t("ticket.unitUsd")}
       </div>
     </div>
@@ -122,7 +124,7 @@ function SizeRow({
         value={raw}
         placeholder=""
         onChange={(e) => onRaw(e.target.value)}
-        className="h-9 min-w-0 bg-surface font-mono tabular-nums"
+        className="h-11 min-w-0 bg-surface font-mono tabular-nums"
       />
       <UnitWheel id={id} unit={unit} onUnit={onUnit} qtyLabel={lot ? t("ticket.unitLot") : t("ticket.unitShares")} />
     </div>
@@ -142,6 +144,8 @@ export const OrderTicket = memo(function OrderTicket() {
   const [unit, setUnit] = useState<SizeUnit>(readUnit);
   const [closing, setClosing] = useState(false);
   const [placing, setPlacing] = useState(false);
+  const [sl, setSl] = useState("");
+  const [tp, setTp] = useState("");
   const t = useT();
   const mode = useTradingMode((s) => s.mode);
 
@@ -153,6 +157,10 @@ export const OrderTicket = memo(function OrderTicket() {
   useEffect(() => {
     setRaw("");
     setPlacing(false);
+    if (pos?.stopLoss) setSl(String(pos.stopLoss));
+    else setSl("");
+    if (pos?.takeProfit) setTp(String(pos.takeProfit));
+    else setTp("");
   }, [selected]);
 
   const qty = asShares(raw, unit, mark);
@@ -198,7 +206,22 @@ export const OrderTicket = memo(function OrderTicket() {
       toast.error(t("ticket.needSize"));
       return;
     }
-    const res = placeOrder({ symbol: selected, side, qty, source: "manual" });
+    const slN = sl.trim() ? parseStop(sl) : null;
+    const tpN = tp.trim() ? parseStop(tp) : null;
+    const openingLong = side === "buy";
+    const err = stopSideError(openingLong, mark, slN, tpN);
+    if (err) {
+      toast.error(t(err === "sl" ? "ticket.badSl" : "ticket.badTp"));
+      return;
+    }
+    const res = placeOrder({
+      symbol: selected,
+      side,
+      qty,
+      source: "manual",
+      stopLoss: sl.trim() ? slN : null,
+      takeProfit: tp.trim() ? tpN : null,
+    });
     if (!res.ok) {
       toast.error(txError(res.error));
       return;
@@ -227,7 +250,7 @@ export const OrderTicket = memo(function OrderTicket() {
             type="button"
             onClick={() => setSide(s)}
             className={cn(
-              "h-9 flex-1 rounded-md text-sm font-medium capitalize",
+              "h-11 flex-1 rounded-md text-sm font-medium capitalize sm:h-9",
               side === s
                 ? s === "buy"
                   ? "bg-up/20 text-up"
@@ -252,7 +275,7 @@ export const OrderTicket = memo(function OrderTicket() {
       <div className="mt-1.5 flex gap-1">
         <Button
           variant={side === "buy" ? "buy" : "sell"}
-          className="h-9 min-w-0 flex-1 px-2 text-xs sm:text-sm"
+          className="h-11 min-w-0 flex-1 px-2 text-xs sm:h-9 sm:text-sm"
           onClick={openPlace}
           disabled={!asset.price || liveBlocked}
         >
@@ -262,7 +285,7 @@ export const OrderTicket = memo(function OrderTicket() {
           <Button
             type="button"
             variant="outline"
-            className="h-9 px-3"
+            className="h-11 px-3 sm:h-9"
             onClick={() => setClosing(true)}
             disabled={!asset.price || liveBlocked}
           >
@@ -276,7 +299,7 @@ export const OrderTicket = memo(function OrderTicket() {
             key={p.label}
             type="button"
             onClick={() => applyPreset(p.qty)}
-            className="h-8 rounded-md bg-surface text-xs font-medium text-muted"
+            className="h-11 rounded-md bg-surface text-xs font-medium text-muted sm:h-9"
           >
             {p.label}
           </button>
@@ -323,6 +346,9 @@ export const OrderTicket = memo(function OrderTicket() {
           {openFee > 0 ? (
             <p className="font-mono text-2xs text-muted tabular-nums">{t("ticket.fee", { usd: money(openFee) })}</p>
           ) : null}
+          <div className="mt-3">
+            <StopsFields long={side === "buy"} mark={mark} sl={sl} tp={tp} onSl={setSl} onTp={setTp} />
+          </div>
           <Button
             className="mt-4 h-11 w-full"
             variant={side === "buy" ? "buy" : "sell"}

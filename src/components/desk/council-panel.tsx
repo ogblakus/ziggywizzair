@@ -68,7 +68,7 @@ function AgentsPane({ onConvene }: { onConvene?: () => void }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center justify-between gap-2 pb-3">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 pb-3">
         <div className="flex items-baseline gap-2">
           <h2 className="text-2xs font-medium tracking-wide text-subtle uppercase">{t("floor.council")}</h2>
           {lastCouncil ? (
@@ -87,7 +87,7 @@ function AgentsPane({ onConvene }: { onConvene?: () => void }) {
             <span className="text-2xs text-subtle">{t("floor.idle")}</span>
           )}
         </div>
-        {onConvene ? <FloorControls onConvene={onConvene} className="lg:hidden" /> : null}
+        {onConvene ? <FloorControls onConvene={onConvene} className="flex lg:hidden" /> : null}
       </div>
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-1">
@@ -100,16 +100,16 @@ function AgentsPane({ onConvene }: { onConvene?: () => void }) {
             const reading = speech?.status === "reading";
             const rec = recs.find((r) => r.id === persona.id);
             return (
-              <li key={persona.id} className="rounded-lg bg-elevated p-3 shadow-[var(--shadow-border)]">
-                <div className="flex items-start gap-2.5">
-                  <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-surface font-mono text-xs font-medium text-accent">
+              <li key={persona.id} className="rounded-lg bg-elevated p-3.5 shadow-[var(--shadow-border)]">
+                <div className="flex items-start gap-3">
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-surface font-mono text-sm font-medium text-accent">
                     {persona.mark}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
                       <div>
                         <div className="text-sm font-medium">{persona.name}</div>
-                        <div className="text-2xs text-subtle">
+                        <div className="text-xs text-subtle">
                           {t(`role.${persona.id}` as MsgKey)}
                           {rec ? (
                             <span className="ml-1.5 text-muted">
@@ -125,7 +125,7 @@ function AgentsPane({ onConvene }: { onConvene?: () => void }) {
                     </div>
                     <p
                       className={cn(
-                        "mt-1.5 text-xs leading-relaxed text-muted",
+                        "mt-1.5 text-sm leading-relaxed text-muted",
                         reading && "shimmer-text",
                       )}
                     >
@@ -147,20 +147,20 @@ function AgentsPane({ onConvene }: { onConvene?: () => void }) {
           const speech = agents.find((a) => a.id === "iris");
           const reading = speech?.status === "reading";
           return (
-            <div className="rounded-lg bg-elevated p-3 shadow-[var(--shadow-border)]">
-              <div className="flex items-start gap-2.5">
-                <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-surface font-mono text-xs font-medium text-accent">
+            <div className="rounded-lg bg-elevated p-3.5 shadow-[var(--shadow-border)]">
+              <div className="flex items-start gap-3">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-surface font-mono text-sm font-medium text-accent">
                   {persona.mark}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <div className="text-sm font-medium">{persona.name}</div>
-                      <div className="text-2xs text-subtle">{t("role.iris")}</div>
+                      <div className="text-xs text-subtle">{t("role.iris")}</div>
                     </div>
                     {speech ? <VoteChip vote={speech.vote} symbol={speech.symbol} /> : null}
                   </div>
-                  <p className={cn("mt-1.5 text-xs leading-relaxed text-muted", reading && "shimmer-text")}>
+                  <p className={cn("mt-1.5 text-sm leading-relaxed text-muted", reading && "shimmer-text")}>
                     {reading
                       ? t("floor.reading")
                       : lastCouncil
@@ -309,7 +309,7 @@ export function ChatPane({ onAsk }: { onAsk: (q: string) => Promise<void> }) {
         )}
       </div>
 
-      <div className="shrink-0 space-y-2 border-t border-border pt-3">
+      <div className="shrink-0 space-y-2 border-t border-border bg-bg pt-3 pb-[max(0.25rem,env(safe-area-inset-bottom,0px))] lg:pb-0">
         <div className="flex flex-wrap gap-1.5">
           {chips.map((c) => (
             <button
@@ -317,7 +317,7 @@ export function ChatPane({ onAsk }: { onAsk: (q: string) => Promise<void> }) {
               type="button"
               onClick={() => void onAsk(c)}
               disabled={asking || convening}
-              className="rounded-md bg-surface px-2 py-1 text-2xs text-muted hover:text-fg disabled:opacity-50"
+              className="min-h-9 rounded-md bg-surface px-3 py-1.5 text-2xs text-muted hover:text-fg disabled:opacity-50"
             >
               {c}
             </button>
@@ -332,7 +332,7 @@ export function ChatPane({ onAsk }: { onAsk: (q: string) => Promise<void> }) {
               disabled={asking}
               className="h-11"
             />
-            <Button type="submit" variant="secondary" disabled={asking || !q.trim()} className="px-4">
+            <Button type="submit" variant="secondary" disabled={asking || !q.trim()} className="h-11 shrink-0 px-4">
               {asking ? "…" : t("floor.ask")}
             </Button>
           </div>
@@ -356,31 +356,27 @@ function DamianCard() {
   const sectors = report?.sectors ?? [];
   const thesis = report?.summary ?? speech?.thesis ?? t("mandate.damian");
   const bias = sentimentBias(sectors);
-  const fill = Math.min(100, Math.max(8, (bias + 1) * 50));
+  const fill = Math.min(100, Math.max(0, (bias + 1) * 50));
 
   return (
-    <div className="rounded-xl bg-elevated p-3 shadow-[var(--shadow-border)]">
-      <div className="flex items-start gap-2.5">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-surface font-mono text-xs font-medium text-accent">
+    <div className="rounded-xl bg-elevated p-3.5 shadow-[var(--shadow-border)]">
+      <div className="flex items-start gap-3">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-surface font-mono text-sm font-medium text-accent">
           D
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium">Damian Kaczmarski</div>
-          <div className="text-2xs text-subtle">{t("floor.sentiment")}</div>
-          <p className={cn("mt-1.5 text-xs leading-relaxed text-muted", reading && "shimmer-text")}>
+          <div className="text-xs text-subtle">{t("floor.sentiment")}</div>
+          <p className={cn("mt-1.5 text-sm leading-relaxed text-muted", reading && "shimmer-text")}>
             {reading ? t("floor.reading") : thesis}
           </p>
-          <div className="relative mt-2.5 h-2.5 overflow-hidden rounded-full bg-surface">
+          <div className="relative mt-3 h-3.5">
             <div
-              className="h-full rounded-full"
-              style={{
-                width: `${fill}%`,
-                background: "linear-gradient(90deg, #c45c5c 0%, #c4a05c 42%, #3d9a7a 100%)",
-              }}
+              className="absolute inset-x-0 top-1/2 h-2 -translate-y-1/2 rounded-full sentiment-track"
             />
             <div
-              className="absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-fg bg-surface"
-              style={{ left: `${fill}%` }}
+              className="absolute top-1/2 size-3.5 rounded-full bg-elevated shadow-[var(--shadow-border)] ring-2 ring-fg"
+              style={{ left: `clamp(0px, calc(${fill}% - 7px), calc(100% - 14px))`, transform: "translateY(-50%)" }}
             />
           </div>
           <div className="mt-1 flex justify-between text-2xs text-subtle">
@@ -419,9 +415,11 @@ function DamianCard() {
               </dd>
             </div>
           </dl>
-          {sectors.length ? (
+          {sectors.filter((row) => row.id !== "dollar" && row.id !== "vol").length ? (
             <ul className="mt-2 space-y-1">
-              {sectors.map((row) => {
+              {sectors
+                .filter((row) => row.id !== "dollar" && row.id !== "vol")
+                .map((row) => {
                 const Icon =
                   row.stance === "bullish" ? ArrowUpRight : row.stance === "bearish" ? ArrowDownRight : Minus;
                 const tone =

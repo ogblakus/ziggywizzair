@@ -27,6 +27,8 @@
   --motion-quick: 0.15s;
   --motion-fast: 0.25s;
   --motion-slow: 0.4s;
+  --motion-y-small: 6px;
+  --motion-scale-menu: 0.97;
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
@@ -366,4 +368,41 @@ html.light {
 }
 .unit-wheel::-webkit-scrollbar {
   display: none;
+}
+
+.desk-scroll-x {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.sentiment-track {
+  background: linear-gradient(
+    90deg,
+    var(--color-down) 0%,
+    color-mix(in oklab, var(--color-down) 42%, var(--color-up)) 50%,
+    var(--color-up) 100%
+  );
+}
+
+.inbox-pop {
+  transform-origin: top right;
+  animation: inbox-in var(--motion-fast) var(--ease-smooth-out);
+}
+
+@keyframes inbox-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--motion-y-small)) scale(var(--motion-scale-menu));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inbox-pop {
+    animation: none;
+  }
 }

@@ -151,6 +151,8 @@ async function createPgliteSql(): Promise<Sql> {
       }
       mkdirSync(PGLITE_DIR, { recursive: true });
       pg = await open();
+      // Two copies of base/ open too many files on this host.
+      rmSync(broken, { recursive: true, force: true });
     }
     await pg.exec(
       "create table if not exists _migrations (name text primary key, applied_at timestamptz not null default now())",
@@ -158,7 +160,7 @@ async function createPgliteSql(): Promise<Sql> {
     const flush = () => {
       void pg.syncToFs().catch(() => undefined);
     };
-    const timer = setInterval(flush, 2000);
+    const timer = setInterval(flush, 15_000);
     if (typeof timer.unref === "function") timer.unref();
     if (!globalRef.__pgliteShutdownBound__) {
       globalRef.__pgliteShutdownBound__ = true;

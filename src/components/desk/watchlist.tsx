@@ -71,7 +71,7 @@ const WatchlistRow = memo(function WatchlistRow({
         data-symbol={asset.symbol}
         onClick={() => onSelect(asset.symbol)}
         className={cn(
-          "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-[background-color] duration-[var(--motion-quick)] ease-[var(--ease-out)]",
+          "flex min-h-11 w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-[background-color] duration-[var(--motion-quick)] ease-[var(--ease-out)]",
           active ? "bg-elevated" : "hover:bg-elevated/60",
         )}
       >
@@ -140,7 +140,7 @@ export function TickerStrip() {
   const select = useDesk((s) => s.select);
 
   return (
-    <div className="shrink-0 overflow-x-auto">
+    <div className="desk-scroll-x shrink-0 -mx-3 px-3">
       <ul className="flex gap-1.5">
         {UNIVERSE.map((u) => {
           const a = assets[u.symbol];
@@ -176,7 +176,7 @@ const TickerChip = memo(function TickerChip({
         data-symbol={asset.symbol}
         onClick={() => onSelect(asset.symbol)}
         className={cn(
-          "flex h-16 w-32 items-center gap-2 rounded-xl px-2.5 text-left shadow-[var(--shadow-border)]",
+          "flex h-14 w-[7.25rem] items-center gap-2 rounded-xl px-2.5 text-left shadow-[var(--shadow-border)] sm:h-16 sm:w-32",
           active ? "bg-elevated" : "bg-surface",
         )}
       >

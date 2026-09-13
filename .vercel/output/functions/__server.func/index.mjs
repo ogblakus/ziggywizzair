@@ -438,6 +438,28 @@ async function grokPwaMiddleware(event, next) {
 	return result;
 }
 //#endregion
+//#region server/middleware/security-headers.ts
+var HEADERS = {
+	"X-Content-Type-Options": "nosniff",
+	"Referrer-Policy": "strict-origin-when-cross-origin",
+	"Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+	"X-DNS-Prefetch-Control": "off"
+};
+function apply(response) {
+	const headers = new Headers(response.headers);
+	for (const [k, v] of Object.entries(HEADERS)) if (!headers.has(k)) headers.set(k, v);
+	return new Response(response.body, {
+		status: response.status,
+		statusText: response.statusText,
+		headers
+	});
+}
+async function securityHeaders(_event, next) {
+	const result = await next();
+	if (result instanceof Response) return apply(result);
+	return result;
+}
+//#endregion
 //#region #nitro/virtual/routing
 var findRouteRules = /* @__PURE__ */ (() => {
 	const $0 = [{
@@ -472,7 +494,7 @@ var findRoute = /* @__PURE__ */ (() => {
 		};
 	});
 })();
-var globalMiddleware = [toEventHandler(grokPwaMiddleware)].filter(Boolean);
+var globalMiddleware = [toEventHandler(grokPwaMiddleware), toEventHandler(securityHeaders)].filter(Boolean);
 //#endregion
 //#region node_modules/nitro/dist/runtime/internal/error/prod.mjs
 var errorHandler = (error, event) => {

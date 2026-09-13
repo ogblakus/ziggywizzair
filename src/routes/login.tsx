@@ -3,11 +3,14 @@ import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { GROK_PROVIDERS, authClient, authEnabled, persistBearer, signIn } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { APP_NAME, PlaneMark } from "@/components/desk/brand";
+import { SecretField } from "@/components/desk/secret-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LanguageSwitch, useT } from "@/lib/i18n";
 import { normalizeUsername, usernameError } from "@/lib/desk/profile-server";
 import { looksLikeEmail, signInHandle, signUpHandle } from "@/lib/desk/login-handle";
+import { getDeviceToken } from "@/lib/desk/device";
+import { issueRecoveryCode, resetDeskPassword, trustThisDevice } from "@/lib/desk/password";
 
 export const Route = createFileRoute("/login")({ component: Login });
 
@@ -68,15 +71,83 @@ function LoginForm() {
   const t = useT();
   const [email, setEmail] = useState(readLastEmail);
   const [password, setPassword] = useState("");
-  const [mode, setMode] = useState<"in" | "up">("in");
+  const [confirm, setConfirm] = useState("");
+  const [recovery, setRecovery] = useState("");
+  const [mode, setMode] = useState<"in" | "up" | "forgot">("in");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [terms, setTerms] = useState(false);
   const [stay, setStay] = useState(true);
+  const [freshCode, setFreshCode] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function afterAuth(token: string | null) {
+    if (token) persistBearer(token, stay);
+    try {
+      await trustThisDevice({ data: { device: getDeviceToken() } });
+    } catch {
+      /* device trust is best-effort */
+    }
+  }
+
+  async function maybeShowRecovery() {
+    try {
+      const rec = await issueRecoveryCode();
+      if (rec.ok) {
+        setFreshCode(rec.code);
+        setBusy(false);
+        return true;
+      }
+    } catch {
+      /* continue into the desk */
+    }
+    return false;
+  }
 
   async function onEmail(e: FormEvent) {
     e.preventDefault();
     const handle = email.trim();
+    if (mode === "forgot") {
+      if (!handle || password.length < 8 || password.length > 128) {
+        setError(t("login.needCreds"));
+        return;
+      }
+      if (password !== confirm) {
+        setError(t("login.mismatch"));
+        return;
+      }
+      setBusy(true);
+      setError(null);
+      rememberEmail(handle);
+      try {
+        const reset = await resetDeskPassword({
+          data: {
+            handle,
+            password,
+            device: getDeviceToken(),
+            recovery: recovery.trim() || undefined,
+          },
+        });
+        if (!reset.ok) throw new Error(t("login.forgotFail"));
+        const res = await signInHandle({
+          data: { handle, password, remember: stay, device: getDeviceToken() },
+        });
+        if (!res.ok) throw new Error(t("login.forgotFail"));
+        await afterAuth(res.token);
+        try {
+          await authClient.getSession();
+        } catch {
+          /* session store recovers on next fetch */
+        }
+        window.location.href = "/";
+      } catch (err) {
+        const raw = err instanceof Error ? err.message : "";
+        setError(raw || t("login.forgotFail"));
+        setBusy(false);
+      }
+      return;
+    }
+
     if (!handle || password.length < 8 || password.length > 128) {
       setError(t("login.needCreds"));
       return;
@@ -104,13 +175,13 @@ function LoginForm() {
           const nick = normalizeUsername(handle);
           const invalid = usernameError(nick);
           if (invalid) throw new Error(t("login.badNick"));
-          const res = await signUpHandle({ data: { username: nick, password } });
+          const res = await signUpHandle({ data: { username: nick, password, device: getDeviceToken() } });
           if (!res.ok) {
             if (res.error === "taken") throw new Error(t("login.nickTaken"));
             if (res.error === "invalid") throw new Error(t("login.badNick"));
             throw new Error(t("login.createFail"));
           }
-          if (res.token) persistBearer(res.token, stay);
+          await afterAuth(res.token);
         } else {
           const mail = handle.toLowerCase();
           const name = mail.split("@")[0] ?? "Desk";
@@ -129,12 +200,15 @@ function LoginForm() {
             throw new Error(err.message ?? t("login.createFail"));
           }
           const token = data && "token" in data ? (data as { token?: string }).token : undefined;
-          if (token) persistBearer(token, stay);
+          await afterAuth(token ?? null);
         }
+        if (await maybeShowRecovery()) return;
       } else {
-        const res = await signInHandle({ data: { handle, password, remember: stay } });
+        const res = await signInHandle({
+          data: { handle, password, remember: stay, device: getDeviceToken() },
+        });
         if (!res.ok) throw new Error(t("login.badCreds"));
-        if (res.token) persistBearer(res.token, stay);
+        await afterAuth(res.token);
       }
       try {
         await authClient.getSession();
@@ -143,38 +217,79 @@ function LoginForm() {
       }
       window.location.href = "/";
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("login.failed"));
+      const raw = err instanceof Error ? err.message : "";
+      const leak = /file descriptor|seek to end|PGLite|EMFILE|base\/\d/i.test(raw);
+      setError(leak || !raw ? t("login.deskBusy") : raw);
       setBusy(false);
     }
+  }
+
+  if (freshCode) {
+    return (
+      <div className="space-y-3">
+        <div className="rounded-xl bg-elevated p-4 shadow-[var(--shadow-border)]">
+          <div className="text-sm font-medium">{t("login.saveRecovery")}</div>
+          <p className="mt-1 text-2xs leading-relaxed text-muted">{t("login.saveRecoveryBody")}</p>
+          <div className="mt-3 rounded-lg bg-surface px-3 py-2.5 font-mono text-sm tracking-wide tabular-nums">
+            {freshCode}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-3 w-full"
+            onClick={() => {
+              void navigator.clipboard.writeText(freshCode).then(
+                () => setCopied(true),
+                () => setCopied(false),
+              );
+            }}
+          >
+            {copied ? t("login.recoveryCopied") : t("login.copyCode")}
+          </Button>
+        </div>
+        <Button type="button" className="w-full" onClick={() => (window.location.href = "/")}>
+          {t("login.enterDesk")}
+        </Button>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-3">
       {authEnabled ? (
         <>
-          {GROK_PROVIDERS.map((p) => (
-            <Button
-              key={p.providerId}
-              type="button"
-              variant="secondary"
-              className="w-full"
-              onClick={() => {
-                if (mode === "up" && !terms) {
-                  setError(t("login.needTerms"));
-                  return;
-                }
-                void signIn(p.providerId, { callbackURL: "/" });
-              }}
-            >
-              {t("login.continueWith", { label: p.label })}
-            </Button>
-          ))}
+          {mode !== "forgot"
+            ? GROK_PROVIDERS.map((p) => (
+                <Button
+                  key={p.providerId}
+                  type="button"
+                  variant="secondary"
+                  className="w-full"
+                  onClick={() => {
+                    if (mode === "up" && !terms) {
+                      setError(t("login.needTerms"));
+                      return;
+                    }
+                    void signIn(p.providerId, { callbackURL: "/" });
+                  }}
+                >
+                  {t("login.continueWith", { label: p.label })}
+                </Button>
+              ))
+            : null}
 
-          <div className="flex items-center gap-3 py-1">
-            <span className="h-px flex-1 bg-border" />
-            <span className="text-2xs tracking-wide text-subtle uppercase">{t("login.orEmail")}</span>
-            <span className="h-px flex-1 bg-border" />
-          </div>
+          {mode !== "forgot" ? (
+            <div className="flex items-center gap-3 py-1">
+              <span className="h-px flex-1 bg-border" />
+              <span className="text-2xs tracking-wide text-subtle uppercase">{t("login.orEmail")}</span>
+              <span className="h-px flex-1 bg-border" />
+            </div>
+          ) : (
+            <div>
+              <div className="text-sm font-medium">{t("login.forgotTitle")}</div>
+              <p className="mt-1 text-2xs leading-relaxed text-muted">{t("login.forgotBody")}</p>
+            </div>
+          )}
 
           <form onSubmit={onEmail} className="space-y-2">
             <Input
@@ -186,30 +301,56 @@ function LoginForm() {
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
-              placeholder={t("login.email")}
+              placeholder={t("login.handlePh")}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter") return;
+                e.preventDefault();
+                const next = document.getElementById("login-password");
+                if (next instanceof HTMLInputElement) next.focus();
+              }}
               className="h-11"
             />
-            <Input
+            <SecretField
               id="login-password"
               name="password"
-              type="password"
-              autoComplete={mode === "up" ? "new-password" : "current-password"}
-              placeholder={t("login.password")}
+              autoComplete={mode === "in" ? "current-password" : "new-password"}
+              placeholder={mode === "forgot" ? t("login.newPassword") : t("login.password")}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="h-11"
             />
-            <label className="flex min-h-11 cursor-pointer items-center gap-2.5 text-sm leading-relaxed">
-              <input
-                type="checkbox"
-                checked={stay}
-                onChange={(e) => setStay(e.target.checked)}
-                className="size-4 shrink-0 accent-current"
-              />
-              <span>{t("login.stay")}</span>
-            </label>
+            {mode === "forgot" ? (
+              <>
+                <SecretField
+                  autoComplete="new-password"
+                  placeholder={t("login.confirmPassword")}
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                />
+                <Input
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder={t("login.recoveryCode")}
+                  aria-label={t("login.recoveryCode")}
+                  value={recovery}
+                  onChange={(e) => setRecovery(e.target.value)}
+                  className="h-11 font-mono tracking-wide"
+                />
+                <p className="px-0.5 text-2xs leading-relaxed text-subtle">{t("login.recoveryPh")}</p>
+              </>
+            ) : null}
+            {mode !== "forgot" ? (
+              <label className="flex min-h-11 cursor-pointer items-center gap-2.5 text-sm leading-relaxed">
+                <input
+                  type="checkbox"
+                  checked={stay}
+                  onChange={(e) => setStay(e.target.checked)}
+                  className="size-4 shrink-0 accent-current"
+                />
+                <span>{t("login.stay")}</span>
+              </label>
+            ) : null}
             {mode === "up" ? (
               <div className="rounded-xl bg-elevated p-3 shadow-[var(--shadow-border)]">
                 <div className="text-2xs font-medium tracking-wide text-subtle uppercase">{t("login.termsTitle")}</div>
@@ -229,18 +370,34 @@ function LoginForm() {
             ) : null}
             {error ? <p className="text-2xs leading-relaxed text-down">{error}</p> : null}
             <Button type="submit" className="w-full" disabled={busy}>
-              {busy ? "…" : mode === "up" ? t("login.createDesk") : t("login.signIn")}
+              {busy ? "…" : mode === "up" ? t("login.createDesk") : mode === "forgot" ? t("login.forgotGo") : t("login.signIn")}
             </Button>
           </form>
+          {mode === "in" ? (
+            <button
+              type="button"
+              className="w-full text-center text-2xs text-muted hover:text-fg"
+              onClick={() => {
+                setMode("forgot");
+                setError(null);
+                setPassword("");
+                setConfirm("");
+              }}
+            >
+              {t("login.forgot")}
+            </button>
+          ) : null}
           <button
             type="button"
             className="w-full text-center text-2xs text-muted hover:text-fg"
             onClick={() => {
-              setMode(mode === "up" ? "in" : "up");
+              setMode(mode === "up" || mode === "forgot" ? "in" : "up");
               setError(null);
+              setConfirm("");
+              setRecovery("");
             }}
           >
-            {mode === "up" ? t("login.haveDesk") : t("login.newHere")}
+            {mode === "up" ? t("login.haveDesk") : mode === "forgot" ? t("login.forgotBack") : t("login.newHere")}
           </button>
         </>
       ) : (

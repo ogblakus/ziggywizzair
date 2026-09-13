@@ -52,6 +52,19 @@ function bool(v: unknown) {
   return v === true || v === "t" || v === "true";
 }
 
+function mergeBy<T>(key: (row: T) => string, incoming: T[], older?: T[]) {
+  const map = new Map<string, T>();
+  for (const row of older ?? []) {
+    const k = key(row);
+    if (k) map.set(k, row);
+  }
+  for (const row of incoming) {
+    const k = key(row);
+    if (k) map.set(k, row);
+  }
+  return [...map.values()];
+}
+
 async function writeAtomic(path: string, body: string) {
   await mkdir(DATA, { recursive: true });
   const tmp = `${path}.${process.pid}.tmp`;
@@ -80,42 +93,59 @@ export async function snapshotVault(sql: Sql): Promise<void> {
     const accounts = await sql<Record<string, unknown>>`select * from "account"`;
     const profiles = await sql<Record<string, unknown>>`select user_id, username, created_at from desk_profiles`;
     const books = await sql<Record<string, unknown>>`select user_id, payload from desk_books`;
+    const prev = await readVault();
     const vault: VaultFile = {
       version: 1,
       at: Date.now(),
-      users: users.map((u) => ({
-        id: String(u.id),
-        name: String(u.name ?? ""),
-        email: String(u.email ?? ""),
-        emailVerified: bool(u.emailVerified),
-        image: typeof u.image === "string" ? u.image : null,
-        createdAt: iso(u.createdAt),
-        updatedAt: iso(u.updatedAt),
-      })),
-      accounts: accounts.map((a) => ({
-        id: String(a.id),
-        accountId: String(a.accountId ?? ""),
-        providerId: String(a.providerId ?? ""),
-        userId: String(a.userId ?? ""),
-        password: typeof a.password === "string" ? a.password : null,
-        accessToken: typeof a.accessToken === "string" ? a.accessToken : null,
-        refreshToken: typeof a.refreshToken === "string" ? a.refreshToken : null,
-        idToken: typeof a.idToken === "string" ? a.idToken : null,
-        accessTokenExpiresAt: a.accessTokenExpiresAt ? iso(a.accessTokenExpiresAt) : null,
-        refreshTokenExpiresAt: a.refreshTokenExpiresAt ? iso(a.refreshTokenExpiresAt) : null,
-        scope: typeof a.scope === "string" ? a.scope : null,
-        createdAt: iso(a.createdAt),
-        updatedAt: iso(a.updatedAt),
-      })),
-      profiles: profiles.map((p) => ({
-        user_id: String(p.user_id),
-        username: String(p.username ?? ""),
-        created_at: iso(p.created_at),
-      })),
-      books: books.map((b) => ({
-        user_id: String(b.user_id),
-        payload: b.payload,
-      })),
+      users: mergeBy(
+        (u) => u.id,
+        users.map((u) => ({
+          id: String(u.id),
+          name: String(u.name ?? ""),
+          email: String(u.email ?? ""),
+          emailVerified: bool(u.emailVerified),
+          image: typeof u.image === "string" ? u.image : null,
+          createdAt: iso(u.createdAt),
+          updatedAt: iso(u.updatedAt),
+        })),
+        prev?.users,
+      ),
+      accounts: mergeBy(
+        (a) => a.id,
+        accounts.map((a) => ({
+          id: String(a.id),
+          accountId: String(a.accountId ?? ""),
+          providerId: String(a.providerId ?? ""),
+          userId: String(a.userId ?? ""),
+          password: typeof a.password === "string" ? a.password : null,
+          accessToken: typeof a.accessToken === "string" ? a.accessToken : null,
+          refreshToken: typeof a.refreshToken === "string" ? a.refreshToken : null,
+          idToken: typeof a.idToken === "string" ? a.idToken : null,
+          accessTokenExpiresAt: a.accessTokenExpiresAt ? iso(a.accessTokenExpiresAt) : null,
+          refreshTokenExpiresAt: a.refreshTokenExpiresAt ? iso(a.refreshTokenExpiresAt) : null,
+          scope: typeof a.scope === "string" ? a.scope : null,
+          createdAt: iso(a.createdAt),
+          updatedAt: iso(a.updatedAt),
+        })),
+        prev?.accounts,
+      ),
+      profiles: mergeBy(
+        (p) => p.user_id,
+        profiles.map((p) => ({
+          user_id: String(p.user_id),
+          username: String(p.username ?? ""),
+          created_at: iso(p.created_at),
+        })),
+        prev?.profiles,
+      ),
+      books: mergeBy(
+        (b) => b.user_id,
+        books.map((b) => ({
+          user_id: String(b.user_id),
+          payload: b.payload,
+        })),
+        prev?.books,
+      ),
     };
     await writeAtomic(VAULT, JSON.stringify(vault));
     await mkdir(BOOKS, { recursive: true });
@@ -132,8 +162,7 @@ export async function restoreVault(sql: Sql): Promise<boolean> {
   const vault = await readVault();
   if (!vault?.users.length) return false;
   try {
-    const existing = await sql<{ n: number }>`select 1 as n from "user" limit 1`;
-    if (existing.length) return false;
+    await sql<{ n: number }>`select 1 as n from "user" limit 1`;
   } catch {
     return false;
   }

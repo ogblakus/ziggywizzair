@@ -59,6 +59,8 @@ export function stampOpened(prev: Position | undefined, next: Position[], fill: 
       openedAt: flip ? fill.ts : (prev?.openedAt ?? fill.ts),
       entryNote: flip ? fill.note : (prev?.entryNote ?? fill.note),
       teamLock: flip ? fill.source === "manual" : Boolean(prev?.teamLock),
+      stopLoss: flip ? (p.stopLoss ?? null) : (p.stopLoss ?? prev?.stopLoss ?? null),
+      takeProfit: flip ? (p.takeProfit ?? null) : (p.takeProfit ?? prev?.takeProfit ?? null),
     };
   });
 }

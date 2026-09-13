@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { UNIVERSE } from "@/lib/market/universe";
 import type { HtfPack, TickBar } from "@/lib/types";
-import { loadDeskMids, loadHlCandles, loadHlChart5, loadHlHtf } from "@/lib/wallet/hyperliquid";
+import { loadDeskMids, loadHlCandles, loadHlChart5, loadHlHtf, loadHlSymbolCandles } from "@/lib/wallet/hyperliquid";
 
 export type LiveQuote = {
   symbol: string;
@@ -320,6 +320,20 @@ export const fetchLiveMids = createServerFn({ method: "POST" }).handler(
     }
   },
 );
+
+export type ChartTf = "1m" | "5m" | "15m";
+
+export const fetchSymbolChart = createServerFn({ method: "POST" })
+  .validator((input: { symbol: string; tf: ChartTf }) => input)
+  .handler(async ({ data }): Promise<{ ok: true; symbol: string; tf: ChartTf; bars: TickBar[] } | { ok: false }> => {
+    try {
+      const bars = await loadHlSymbolCandles(data.symbol, data.tf);
+      if (bars.length < 2) return { ok: false };
+      return { ok: true, symbol: data.symbol, tf: data.tf, bars };
+    } catch {
+      return { ok: false };
+    }
+  });
 
 if (import.meta.env.SSR) {
   void loadLiveMarket();

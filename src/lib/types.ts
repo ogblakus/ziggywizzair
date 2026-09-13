@@ -58,6 +58,10 @@ export type Position = {
   teamLock?: boolean;
   /** Cumulative Hyperliquid-style fees paid while this name is open. */
   fees?: number;
+  /** Absolute stop-loss price. */
+  stopLoss?: number | null;
+  /** Absolute take-profit price. */
+  takeProfit?: number | null;
 };
 
 export type AgentCall = {
@@ -220,6 +224,7 @@ export type MarketSnapshot = {
       pnlPct: number;
       teamLock?: boolean;
     }>;
+    working?: { side: Side; symbol: string; qty: number; limitPx?: number } | null;
   };
   macro?: MacroTape | null;
   scorecard?: Array<{

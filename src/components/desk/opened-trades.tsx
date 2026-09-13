@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { Lock, LockOpen } from "lucide-react";
 import { toast } from "sonner";
+import { StopsFields } from "@/components/desk/stops-fields";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { compactMoney, compactPrice, money, pct, signedClass, signedQty } from "@/lib/format";
 import { hlFeeUsd } from "@/lib/desk/fees";
+import { parseStop, stopSideError } from "@/lib/desk/stops";
 import { bookEquity, useDesk, useMarkedAssets } from "@/lib/desk-store";
 import { useMark } from "@/lib/marks-store";
 import { isLot } from "@/lib/market/universe";
@@ -52,9 +54,13 @@ function TeamLockButton({ position: p }: { position: Position }) {
       <TooltipTrigger asChild>
         <button
           type="button"
-          onClick={() => toggle(p.symbol)}
+          onClick={() => {
+            const next = !locked;
+            toggle(p.symbol);
+            toast.message(next ? t("lock.onToast", { symbol: assetLabel(p.symbol) }) : t("lock.offToast", { symbol: assetLabel(p.symbol) }));
+          }}
           className={cn(
-            "flex size-9 shrink-0 items-center justify-center rounded-md hover:bg-elevated",
+            "flex size-11 shrink-0 items-center justify-center rounded-md hover:bg-elevated",
             locked ? "text-fg" : "text-muted",
           )}
           aria-pressed={locked}
@@ -65,6 +71,83 @@ function TeamLockButton({ position: p }: { position: Position }) {
       </TooltipTrigger>
       <TooltipContent>{locked ? t("lock.on") : t("lock.off")}</TooltipContent>
     </Tooltip>
+  );
+}
+
+export function StopsDialog({
+  position: p,
+  open,
+  onOpenChange,
+}: {
+  position: Position | null;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const t = useT();
+  const setStops = useDesk((s) => s.setStops);
+  const fallback = useDesk((s) => (p ? (s.assets[p.symbol]?.price ?? p.avg) : 0));
+  const mark = useMark(p?.symbol ?? "");
+  const [sl, setSl] = useState("");
+  const [tp, setTp] = useState("");
+
+  useEffect(() => {
+    if (!open || !p) return;
+    setSl(p.stopLoss != null ? String(p.stopLoss) : "");
+    setTp(p.takeProfit != null ? String(p.takeProfit) : "");
+  }, [open, p?.symbol, p?.stopLoss, p?.takeProfit]);
+
+  if (!p) return null;
+  const pos = p;
+  const px = mark || fallback || pos.avg;
+  const long = pos.qty >= 0;
+
+  function save() {
+    const slN = sl.trim() ? parseStop(sl) : null;
+    const tpN = tp.trim() ? parseStop(tp) : null;
+    if (sl.trim() && slN == null) {
+      toast.error(t("ticket.badSl"));
+      return;
+    }
+    if (tp.trim() && tpN == null) {
+      toast.error(t("ticket.badTp"));
+      return;
+    }
+    const err = stopSideError(long, px, slN, tpN);
+    if (err) {
+      toast.error(t(err === "sl" ? "ticket.badSl" : "ticket.badTp"));
+      return;
+    }
+    setStops(pos.symbol, { stopLoss: slN, takeProfit: tpN });
+    onOpenChange(false);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("ticket.stopsTitle", { symbol: assetLabel(pos.symbol) })}</DialogTitle>
+          <DialogDescription>{t("ticket.stopsHint")}</DialogDescription>
+        </DialogHeader>
+        <div className="mt-3">
+          <StopsFields long={long} mark={px} sl={sl} tp={tp} onSl={setSl} onTp={setTp} />
+        </div>
+        <div className="mt-4 flex gap-2">
+          <Button
+            variant="ghost"
+            className="flex-1"
+            onClick={() => {
+              setStops(pos.symbol, { stopLoss: null, takeProfit: null });
+              onOpenChange(false);
+            }}
+          >
+            {t("ticket.stopsClear")}
+          </Button>
+          <Button className="flex-1" onClick={save}>
+            {t("ticket.stopsSave")}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -167,6 +250,7 @@ export function OpenedTrades() {
   const equity = bookEquity(cash, demoPositions, assets);
   const t = useT();
   const [closing, setClosing] = useState<Position | null>(null);
+  const [stopping, setStopping] = useState<Position | null>(null);
 
   if (mode === "live") {
     return (
@@ -242,11 +326,11 @@ export function OpenedTrades() {
                 key={p.symbol}
                 className="rounded-lg bg-elevated px-3 py-2.5 shadow-[var(--shadow-border)]"
               >
-                <div className="flex items-start gap-2">
+                <div className="flex flex-wrap items-start gap-2">
                   <button
                     type="button"
                     onClick={() => select(p.symbol)}
-                    className="min-w-0 flex-1 text-left"
+                    className="min-w-0 flex-1 basis-40 text-left"
                   >
                     <div className="flex items-center gap-2">
                       <span
@@ -266,8 +350,25 @@ export function OpenedTrades() {
                     <div className={`mt-0.5 font-mono text-xs tabular-nums ${signedClass(pnl)}`}>
                       {money(pnl)} · {pct(pnlPct)}
                     </div>
+                    {p.stopLoss || p.takeProfit ? (
+                      <div className="mt-0.5 font-mono text-2xs text-muted tabular-nums">
+                        {p.stopLoss ? `SL ${compactPrice(p.stopLoss)}` : ""}
+                        {p.stopLoss && p.takeProfit ? " · " : ""}
+                        {p.takeProfit ? `TP ${compactPrice(p.takeProfit)}` : ""}
+                      </div>
+                    ) : null}
                   </button>
+                  <div className="flex shrink-0 items-center gap-1">
                   <TeamLockButton position={p} />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-11 shrink-0 px-3"
+                    onClick={() => setStopping(p)}
+                  >
+                    {t("opened.stops")}
+                  </Button>
                   <Button
                     type="button"
                     variant="outline"
@@ -278,6 +379,7 @@ export function OpenedTrades() {
                   >
                     {t("ticket.close")}
                   </Button>
+                  </div>
                 </div>
               </li>
             );
@@ -285,6 +387,7 @@ export function OpenedTrades() {
         </ul>
       )}
       <CloseTradeDialog position={closing} open={!!closing} onOpenChange={(v) => !v && setClosing(null)} />
+      <StopsDialog position={stopping} open={!!stopping} onOpenChange={(v) => !v && setStopping(null)} />
     </section>
   );
 }
@@ -300,7 +403,7 @@ export function OpenedStrip() {
     if (livePositions.length === 0) return null;
     return (
       <div className="shrink-0 border-b border-border px-3 py-1.5 sm:px-4 sm:py-2">
-        <div className="flex items-center gap-2 overflow-x-auto">
+        <div className="desk-scroll-x flex items-center gap-2">
           <span className="shrink-0 text-2xs font-medium tracking-wide text-subtle uppercase">
             {t("opened.title")}
           </span>
@@ -310,7 +413,7 @@ export function OpenedStrip() {
             return (
               <div
                 key={`${p.coin}-${p.desk ?? ""}`}
-                className="flex h-9 shrink-0 items-center gap-2 rounded-md bg-surface px-2 shadow-[var(--shadow-border)] sm:h-11 sm:rounded-lg sm:px-2.5"
+                className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-surface px-2.5 shadow-[var(--shadow-border)]"
               >
                 <button
                   type="button"
@@ -339,7 +442,7 @@ export function OpenedStrip() {
 
   return (
     <div className="shrink-0 border-b border-border px-3 py-1.5 sm:px-4 sm:py-2">
-      <div className="flex items-center gap-2 overflow-x-auto">
+      <div className="desk-scroll-x flex items-center gap-2">
         <span className="shrink-0 text-2xs font-medium tracking-wide text-subtle uppercase">
           {t("opened.title")}
         </span>
@@ -369,8 +472,9 @@ function OpenedChip({
   const pnl = (px - p.avg) * p.qty;
   const long = p.qty >= 0;
   const [open, setOpen] = useState(false);
+  const [stops, setStopsOpen] = useState(false);
   return (
-    <div className="flex h-9 shrink-0 items-center gap-2 rounded-md bg-surface px-2 shadow-[var(--shadow-border)] sm:h-11 sm:rounded-lg sm:px-2.5">
+    <div className="flex h-11 shrink-0 items-center gap-1.5 rounded-lg bg-surface px-2 shadow-[var(--shadow-border)] sm:px-2.5">
       <button type="button" onClick={() => onSelect(p.symbol)} className="flex items-center gap-2 text-left">
         <span className={cn("font-mono text-sm font-medium", long ? "text-up" : "text-down")}>
           {assetLabel(p.symbol)}
@@ -380,17 +484,32 @@ function OpenedChip({
         </span>
         <span className="font-mono text-2xs text-muted tabular-nums">{compactMoney(Math.abs(p.qty * px))}</span>
         <span className={`font-mono text-2xs tabular-nums ${signedClass(pnl)}`}>{money(pnl)}</span>
+        {p.stopLoss || p.takeProfit ? (
+          <span className="font-mono text-2xs text-subtle tabular-nums">
+            {p.stopLoss ? `SL ${compactPrice(p.stopLoss)}` : ""}
+            {p.stopLoss && p.takeProfit ? " " : ""}
+            {p.takeProfit ? `TP ${compactPrice(p.takeProfit)}` : ""}
+          </span>
+        ) : null}
       </button>
       <TeamLockButton position={p} />
       <button
         type="button"
+        onClick={() => setStopsOpen(true)}
+        className="flex h-11 items-center rounded-md px-2 text-2xs font-medium text-muted hover:bg-elevated hover:text-fg"
+      >
+        {t("opened.stops")}
+      </button>
+      <button
+        type="button"
         onClick={() => setOpen(true)}
-        className="h-9 rounded-md px-2 text-2xs font-medium text-muted hover:bg-elevated hover:text-fg"
+        className="flex h-11 items-center rounded-md px-2 text-2xs font-medium text-muted hover:bg-elevated hover:text-fg"
         aria-label={t("opened.closeAria", { symbol: p.symbol })}
       >
         {t("ticket.close")}
       </button>
       <CloseTradeDialog position={p} open={open} onOpenChange={setOpen} />
+      <StopsDialog position={p} open={stops} onOpenChange={setStopsOpen} />
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { isLot } from "@/lib/market/universe";
 import { t } from "@/lib/i18n/locale";
 import { assetName, fillNoteLabel, fillSideLabel } from "@/lib/i18n/labels";
 import type { Locale } from "@/lib/i18n/catalog";
+import { alertKindAllowed, type AlertPrefs } from "@/lib/desk/alert-prefs";
 import type { ClosedTrade, Fill, ProposedOrder } from "@/lib/types";
 
 export type FillAlert = {
@@ -53,7 +54,19 @@ export function alertForProposal(order: ProposedOrder, locale: "en" | "pl"): Fil
   };
 }
 
-export function alertsForFills(fills: Fill[], closed: ClosedTrade[], locale: Locale = "en"): FillAlert[] {
+export function alertsForFills(
+  fills: Fill[],
+  closed: ClosedTrade[],
+  locale: Locale = "en",
+  prefs?: AlertPrefs | null,
+): FillAlert[] {
   const byId = new Map(closed.map((c) => [c.id, c]));
-  return fills.map((f) => alertForFill(f, byId.get(f.id) ?? null, locale));
+  return fills
+    .map((f) => {
+      const row = byId.get(f.id) ?? null;
+      const kind = row ? "close" : "open";
+      if (!alertKindAllowed(kind, prefs)) return null;
+      return alertForFill(f, row, locale);
+    })
+    .filter((a): a is FillAlert => Boolean(a));
 }

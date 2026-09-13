@@ -129,7 +129,7 @@ export function PortfolioPanel() {
         <h2 className="px-1 pb-2 text-2xs font-medium tracking-wide text-subtle uppercase">
           {t("port.alloc")}
         </h2>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <div className="relative size-40 shrink-0">
             {colored.length ? (
               <>

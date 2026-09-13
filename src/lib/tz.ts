@@ -98,18 +98,38 @@ function wallMinutes(ts: number, zone: string) {
 /** Epochs in [from, to] where `zone` wall-clock equals hour:minute. */
 export function timesAtClock(from: number, to: number, zone: string, hour: number, minute: number) {
   if (!(to > from)) return [];
+  const maxSpan = 48 * 60 * 60 * 1000;
+  if (to - from > maxSpan) from = to - maxSpan;
   const want = hour * 60 + minute;
-  const step = 60_000;
+  const first = nextAtClock(from, zone, want);
+  if (first == null || first > to) return [];
   const out: number[] = [];
-  let t = Math.floor(from / step) * step;
-  let lastHit = -1;
-  for (; t <= to; t += step) {
-    if (wallMinutes(t, zone) === want) {
-      if (lastHit < 0 || t - lastHit > 30 * 60_000) out.push(t);
-      lastHit = t;
-    }
+  let t = first;
+  let guard = 0;
+  while (t <= to && guard++ < 8) {
+    out.push(t);
+    const next = nextAtClock(t + 60_000, zone, want);
+    if (next == null || next <= t) break;
+    t = next;
   }
   return out;
+}
+
+function nextAtClock(from: number, zone: string, want: number) {
+  const nowM = wallMinutes(from, zone);
+  let delta = want - nowM;
+  if (delta < 0) delta += 24 * 60;
+  let t = from + delta * 60_000;
+  for (let i = 0; i < 8; i++) {
+    const got = wallMinutes(t, zone);
+    if (got === want) return t;
+    let adj = want - got;
+    if (adj > 12 * 60) adj -= 24 * 60;
+    if (adj < -12 * 60) adj += 24 * 60;
+    if (adj === 0) return t;
+    t += adj * 60_000;
+  }
+  return null;
 }
 
 export function formatTzTime(ts: number, zone: string) {

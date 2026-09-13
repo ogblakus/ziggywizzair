@@ -1,19 +1,30 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Bell, BellRing } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Bell, CheckCheck, CircleDot } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { dropPushSubscription, getPushPublicKey, savePushSubscription } from "@/lib/desk/push-api";
 import { useDesk } from "@/lib/desk-store";
 import { isLot } from "@/lib/market/universe";
-import { qtyFmt, timeAgo } from "@/lib/format";
+import { money, qtyFmt, signedClass, timeAgo } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { assetLabel, fillNoteLabel, fillSideLabel } from "@/lib/i18n/labels";
-import { t, useT } from "@/lib/i18n";
+import { t, useT, type MsgKey } from "@/lib/i18n";
 import { useTradingMode } from "@/lib/trading-mode";
+import type { ClosedTrade } from "@/lib/types";
 
 type AlertState = "off" | "on" | "blocked" | "busy";
 const SEEN_KEY = "zw-alerts-seen";
+const READ_KEY = "zw-alerts-read";
+
+type InboxItem = {
+  id: string;
+  ts: number;
+  kind: "open" | "close" | "proposal";
+  title: string;
+  body: string;
+  pnl?: number;
+};
 
 function withTimeout<T>(p: Promise<T>, ms: number) {
   return Promise.race([
@@ -52,12 +63,40 @@ function writeSeen(ts: number) {
   }
 }
 
+function readIds(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.localStorage.getItem(READ_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw) as unknown;
+    return Array.isArray(arr) ? new Set(arr.filter((x) => typeof x === "string")) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function writeIds(ids: Set<string>) {
+  try {
+    window.localStorage.setItem(READ_KEY, JSON.stringify([...ids].slice(-240)));
+  } catch {
+    /* ignore */
+  }
+}
+
 function placeInbox(anchor: DOMRect) {
   const pad = 12;
-  const width = Math.min(328, window.innerWidth - pad * 2);
+  const width = Math.min(380, window.innerWidth - pad * 2);
   const left = Math.min(Math.max(pad, anchor.right - width), window.innerWidth - width - pad);
   const top = Math.min(anchor.bottom + 8, window.innerHeight - pad);
   return { top, left, width };
+}
+
+function dayBucket(ts: number, now: number): "today" | "yesterday" | "earlier" {
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  if (ts >= start.getTime()) return "today";
+  if (ts >= start.getTime() - 86_400_000) return "yesterday";
+  return "earlier";
 }
 
 export function usePushAlerts() {
@@ -156,15 +195,19 @@ export function AlertsButton({ className }: { className?: string }) {
   const mode = useTradingMode((s) => s.mode);
   const allFills = useDesk((s) => s.fills);
   const fills = mode === "live" ? [] : allFills;
+  const closed = useDesk((s) => s.closedTrades);
+  const proposal = useDesk((s) => s.proposal);
   const clock = useDesk((s) => s.clock);
   const [open, setOpen] = useState(false);
   const [seen, setSeen] = useState(0);
+  const [read, setRead] = useState<Set<string>>(() => new Set());
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setSeen(readSeen());
+    setRead(readIds());
   }, []);
 
   useEffect(() => {
@@ -177,8 +220,8 @@ export function AlertsButton({ className }: { className?: string }) {
     window.addEventListener("resize", update);
     window.addEventListener("scroll", update, true);
     const onDown = (e: MouseEvent) => {
-      const t = e.target as Node;
-      if (root.current?.contains(t) || panel.current?.contains(t)) return;
+      const node = e.target as Node;
+      if (root.current?.contains(node) || panel.current?.contains(node)) return;
       setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
@@ -194,33 +237,82 @@ export function AlertsButton({ className }: { className?: string }) {
     };
   }, [open]);
 
-  const latest = fills[0]?.ts ?? 0;
-  const unread = fills.filter((f) => f.ts > seen).length;
-  const Icon = unread > 0 ? BellRing : Bell;
+  const closedById = new Map<string, ClosedTrade>(closed.map((c) => [c.id, c]));
+  const items: InboxItem[] = [];
+  if (proposal && mode !== "live") {
+    items.push({
+      id: `proposal-${proposal.symbol}-${proposal.proposedAt ?? 0}`,
+      ts: proposal.proposedAt ?? clock,
+      kind: "proposal",
+      title: tt("alerts.waiting"),
+      body: `${fillSideLabel(proposal.side)} ${qtyFmt(proposal.qty, isLot(proposal.symbol))} ${assetLabel(proposal.symbol)}`,
+    });
+  }
+  for (const f of fills.slice(0, 24)) {
+    const row = closedById.get(f.id);
+    const isClose = Boolean(row);
+    items.push({
+      id: f.id,
+      ts: f.ts,
+      kind: isClose ? "close" : "open",
+      title: `${fillSideLabel(f.side)} ${qtyFmt(f.qty, isLot(f.symbol))} ${assetLabel(f.symbol)}`,
+      body: isClose
+        ? fillNoteLabel(row?.closeNote ?? f.note, f.source)
+        : `@${f.price.toFixed(2)} · ${fillNoteLabel(f.note, f.source)}`,
+      pnl: row?.pnl,
+    });
+  }
+  items.sort((a, b) => b.ts - a.ts);
+
+  function isUnread(id: string, ts: number) {
+    if (read.has(id)) return false;
+    return ts > seen;
+  }
+
+  const unread = items.filter((x) => isUnread(x.id, x.ts)).length;
 
   function toggle() {
     setOpen((v) => !v);
   }
 
   function markAll() {
-    const ts = Math.max(Date.now(), latest);
+    const ts = Math.max(Date.now(), items[0]?.ts ?? 0);
     writeSeen(ts);
     setSeen(ts);
+    const next = new Set(read);
+    for (const x of items) next.add(x.id);
+    writeIds(next);
+    setRead(next);
+  }
+
+  function markOne(id: string) {
+    const next = new Set(read);
+    next.add(id);
+    writeIds(next);
+    setRead(next);
+  }
+
+  const groups: Array<{ id: "today" | "yesterday" | "earlier"; items: InboxItem[] }> = [];
+  for (const bucket of ["today", "yesterday", "earlier"] as const) {
+    const rows = items.filter((x) => dayBucket(x.ts, clock) === bucket);
+    if (rows.length) groups.push({ id: bucket, items: rows });
   }
 
   return (
-    <div ref={root} className="relative">
+    <div ref={root} className={cn("relative", className)}>
       <Button
         variant="ghost"
         size="icon-sm"
         aria-label={tt("alerts.aria")}
         aria-expanded={open}
-        className={cn("relative", className)}
+        className="relative size-11"
         onClick={toggle}
       >
-        <Icon className="size-4 text-fg" />
+        <Bell className={cn("size-4", unread > 0 ? "text-fg" : "text-muted")} />
         {unread > 0 ? (
-          <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-accent" />
+          <span className="absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 font-mono text-3xs tabular-nums text-accent-fg">
+            {unread > 9 ? "9+" : unread}
+          </span>
         ) : null}
       </Button>
 
@@ -230,57 +322,125 @@ export function AlertsButton({ className }: { className?: string }) {
               ref={panel}
               role="dialog"
               aria-label={tt("alerts.title")}
-              className="overflow-hidden rounded-xl bg-surface shadow-[var(--shadow-border)]"
+              className="inbox-pop overflow-hidden rounded-2xl bg-surface shadow-[var(--shadow-border)]"
               style={{ position: "fixed", top: pos.top, left: pos.left, width: pos.width, zIndex: 80 }}
             >
-              <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-                <div className="text-2xs font-medium tracking-wide text-subtle uppercase">{tt("alerts.title")}</div>
+              <div className="flex items-center gap-2 border-b border-border px-3.5 pt-3 pb-2.5">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium tracking-tight text-fg">{tt("alerts.title")}</div>
+                  {unread > 0 ? (
+                    <div className="mt-0.5 text-2xs text-muted">{tt("alerts.unreadCount", { n: unread })}</div>
+                  ) : null}
+                </div>
                 {unread > 0 ? (
                   <button
                     type="button"
                     onClick={markAll}
-                    className="text-2xs font-medium text-fg"
+                    className="inline-flex h-9 items-center gap-1.5 rounded-md px-2 text-2xs font-medium text-muted hover:bg-elevated hover:text-fg"
                   >
+                    <CheckCheck className="size-3.5" />
                     {tt("alerts.markAll")}
                   </button>
-                ) : (
-                  <span className="font-mono text-2xs text-subtle tabular-nums">{fills.length}</span>
-                )}
+                ) : null}
               </div>
-              <ul className="max-h-72 overflow-y-auto">
-                {fills.length === 0 ? (
-                  <li className="px-3 py-6 text-sm leading-relaxed text-muted">
-                    {mode === "live" ? tt("port.liveFills") : tt("alerts.emptyBody")}
-                  </li>
+
+              <div className="max-h-[min(28rem,70dvh)] overflow-y-auto pb-2">
+                {items.length === 0 ? (
+                  <div className="flex flex-col items-center px-6 py-10 text-center">
+                    <span className="flex size-11 items-center justify-center rounded-xl bg-elevated text-subtle">
+                      <Bell className="size-4" />
+                    </span>
+                    <p className="mt-3 text-sm font-medium text-fg">{tt("alerts.emptyTitle")}</p>
+                    <p className="mt-1 max-w-[16rem] text-2xs leading-relaxed text-muted">
+                      {mode === "live" ? tt("alerts.liveEmpty") : tt("alerts.emptyBody")}
+                    </p>
+                  </div>
                 ) : (
-                  fills.slice(0, 24).map((f) => (
-                    <li
-                      key={f.id}
-                      className={cn(
-                        "border-b border-border px-3 py-2.5 last:border-b-0",
-                        f.ts > seen ? "bg-accent/10" : "",
-                      )}
-                    >
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span
-                          className={cn(
-                            "font-mono text-xs font-medium tabular-nums",
-                            f.side === "buy" ? "text-up" : "text-down",
-                          )}
-                        >
-                          {fillSideLabel(f.side)} {qtyFmt(f.qty, isLot(f.symbol))} {assetLabel(f.symbol)}
-                        </span>
-                        <span className="font-mono text-2xs text-subtle tabular-nums">
-                          {timeAgo(f.ts, clock)}
-                        </span>
-                      </div>
-                      <div className="mt-0.5 font-mono text-2xs text-muted tabular-nums">
-                        @{f.price.toFixed(2)} · {fillNoteLabel(f.note, f.source)}
-                      </div>
-                    </li>
+                  groups.map((group) => (
+                    <section key={group.id} className="pt-1">
+                      <h3 className="sticky top-0 z-10 bg-surface/95 px-3.5 py-1.5 text-2xs font-medium tracking-wide text-subtle uppercase">
+                        {tt(`alerts.${group.id}` as MsgKey)}
+                      </h3>
+                      <ul className="px-2 pb-1">
+                        {group.items.map((row) => {
+                          const unreadRow = isUnread(row.id, row.ts);
+                          const Icon =
+                            row.kind === "close"
+                              ? ArrowDownRight
+                              : row.kind === "proposal"
+                                ? CircleDot
+                                : ArrowUpRight;
+                          const iconTone =
+                            row.kind === "proposal"
+                              ? "bg-elevated text-fg"
+                              : row.kind === "close"
+                                ? row.pnl != null && row.pnl < 0
+                                  ? "bg-down/10 text-down"
+                                  : "bg-up/10 text-up"
+                                : "bg-up/10 text-up";
+                          return (
+                            <li key={row.id}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  markOne(row.id);
+                                  if (row.kind === "proposal") setOpen(false);
+                                }}
+                                className={cn(
+                                  "flex w-full items-start gap-2.5 rounded-xl px-2 py-2.5 text-left",
+                                  unreadRow ? "bg-elevated/80" : "hover:bg-elevated/50",
+                                )}
+                              >
+                                <span
+                                  className={cn(
+                                    "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg",
+                                    iconTone,
+                                  )}
+                                >
+                                  <Icon className="size-3.5" />
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                  <span className="flex items-baseline justify-between gap-2">
+                                    <span className="truncate text-xs font-medium text-fg">{row.title}</span>
+                                    <span className="shrink-0 font-mono text-2xs text-subtle tabular-nums">
+                                      {timeAgo(row.ts, clock)}
+                                    </span>
+                                  </span>
+                                  <span className="mt-0.5 block truncate text-2xs leading-relaxed text-muted">
+                                    {row.body}
+                                  </span>
+                                  <span className="mt-1 flex items-center gap-2">
+                                    <span className="text-2xs text-subtle">
+                                      {tt(`alerts.kind.${row.kind}` as MsgKey)}
+                                    </span>
+                                    {row.pnl != null ? (
+                                      <span
+                                        className={cn(
+                                          "font-mono text-2xs tabular-nums",
+                                          signedClass(row.pnl),
+                                        )}
+                                      >
+                                        {tt("alerts.pnl", {
+                                          value: `${row.pnl >= 0 ? "+" : ""}${money(row.pnl)}`,
+                                        })}
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                </span>
+                                {unreadRow ? (
+                                  <span className="mt-2 size-1.5 shrink-0 rounded-full bg-accent" />
+                                ) : (
+                                  <span className="mt-2 size-1.5 shrink-0" />
+                                )}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </section>
                   ))
                 )}
-              </ul>
+              </div>
             </div>,
             document.body,
           )

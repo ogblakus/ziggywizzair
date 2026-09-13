@@ -94,6 +94,9 @@ export function snapshotFromBook(
         const pnlPct = p.avg ? ((px - p.avg) / p.avg) * 100 * Math.sign(p.qty || 1) : 0;
         return { symbol: p.symbol, qty: p.qty, avg: p.avg, pnlPct, teamLock: Boolean(p.teamLock) };
       }),
+      working: book.working
+        ? { side: book.working.side, symbol: book.working.symbol, qty: book.working.qty, limitPx: book.working.limitPx }
+        : null,
     },
     macro: withEquityPct(macro, spyChg),
     scorecard: compactScorecard(recordsFrom(book.agentCalls ?? []), book.agentCalls ?? []),
