@@ -11,7 +11,6 @@ import type {
   VesperIdea,
   VesperOutput,
 } from "@/lib/agents/core/types";
-import { HARD } from "@/lib/agents/core/scoring";
 import type { MarketSnapshot } from "@/lib/types";
 
 export function clamp(n: number, lo: number, hi: number) {

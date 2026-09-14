@@ -28,6 +28,7 @@ export async function runOrchestrator(input: {
   snap: MarketSnapshot;
   selected?: string | null;
   locale?: Locale;
+  last?: CouncilResult | null;
 }): Promise<V2Session> {
   const locale: Locale = input.locale === "pl" ? "pl" : "en";
   const snap = input.snap;
@@ -45,7 +46,8 @@ export async function runOrchestrator(input: {
   ]);
 
   const cut = stalledCut(snap);
-  let decision = decisionEngine({ vesper, ash, kai: kaiScanOut, damian, snap, locale, cut });
+  const prevBand = input.last?.band ?? null;
+  let decision = decisionEngine({ vesper, ash, kai: kaiScanOut, damian, snap, locale, cut, prevBand });
 
   let kai = kaiScanOut;
   if (decision.symbol && decision.side) {
@@ -62,7 +64,7 @@ export async function runOrchestrator(input: {
           confidence: validated.status === "ready" ? 0.72 : validated.status === "wait" ? 0.55 : 0.35,
         },
       };
-      decision = decisionEngine({ vesper, ash, kai, damian, snap, locale, validated, cut });
+      decision = decisionEngine({ vesper, ash, kai, damian, snap, locale, validated, cut, prevBand });
     }
   }
 

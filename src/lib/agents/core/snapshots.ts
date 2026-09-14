@@ -19,21 +19,22 @@ function tickerCore(t: TickerSnapshot) {
   };
 }
 
-/** Vesper — 15m momentum + 1h/4h confirmation. No book, no news, no other agents. */
+function tickerTape(t: TickerSnapshot) {
+  return {
+    ...tickerCore(t),
+    open: n(t.open, 4) ?? 0,
+    high: n(t.high, 4) ?? 0,
+    low: n(t.low, 4) ?? 0,
+  };
+}
+
+/** Vesper — 15m momentum from OHLC / RSI / RVOL / SMA. No Kai setup labels. */
 export function vesperSnapshot(snap: MarketSnapshot, lookingAt: string | null) {
   return {
     lookingAt,
-    note: "15m primary. 1h/4h confirmation. Do not use 1m.",
+    note: "15m primary. Read the tape. You do not receive Kai setup verdicts.",
     tickers: snap.tickers.slice(0, 12).map((t) => ({
-      ...tickerCore(t),
-      buySetup: t.buySetup ?? "none",
-      sellSetup: t.sellSetup ?? "none",
-      buyRetrace: t.buyRetrace ?? null,
-      sellRetrace: t.sellRetrace ?? null,
-      buyTf: t.buyTf ?? null,
-      sellTf: t.sellTf ?? null,
-      buyWick: Boolean(t.buyWick),
-      sellWick: Boolean(t.sellWick),
+      ...tickerTape(t),
       math: {
         long: Number(vesperMomentumScore(t, "buy").toFixed(1)),
         short: Number(vesperMomentumScore(t, "sell").toFixed(1)),
@@ -42,17 +43,13 @@ export function vesperSnapshot(snap: MarketSnapshot, lookingAt: string | null) {
   };
 }
 
-/** Ash — displacement from mean. Independent of Vesper. */
+/** Ash — displacement from mean. Independent of Vesper and Kai labels. */
 export function ashSnapshot(snap: MarketSnapshot, lookingAt: string | null) {
   return {
     lookingAt,
-    note: "Mean reversion. Do not fade clean expansion with rising RVOL.",
+    note: "Mean reversion. HOLD is valid. Do not fade clean expansion with rising RVOL.",
     tickers: snap.tickers.slice(0, 12).map((t) => ({
-      ...tickerCore(t),
-      buyWick: Boolean(t.buyWick),
-      sellWick: Boolean(t.sellWick),
-      buySetup: t.buySetup ?? "none",
-      sellSetup: t.sellSetup ?? "none",
+      ...tickerTape(t),
       math: {
         fadeLong: Number(ashReversionScore(t, "buy").toFixed(1)),
         fadeShort: Number(ashReversionScore(t, "sell").toFixed(1)),

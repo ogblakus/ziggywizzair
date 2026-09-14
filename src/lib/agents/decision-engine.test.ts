@@ -141,7 +141,7 @@ function damian(cryptoScore: number): DamianOutput {
   });
 }
 
-describe("decision engine V2.2", () => {
+describe("decision engine V2.3", () => {
   it("reproduces the spec weighted example", () => {
     const final =
       82 * WEIGHTS.vesper * 1.1 +
@@ -172,6 +172,19 @@ describe("decision engine V2.2", () => {
       ash: ash(35),
       kai: kai("blocked"),
       damian: damian(-61),
+      snap: emptySnap(),
+      locale: "en",
+    });
+    assert.equal(d.gate.kaiNotBlocked, false);
+    assert.equal(d.gate.passed, false);
+  });
+
+  it("rejects when Kai is wait — wait is not a candidate", () => {
+    const d = decisionEngine({
+      vesper: vesper(82),
+      ash: ash(35),
+      kai: kai("wait"),
+      damian: damian(20),
       snap: emptySnap(),
       locale: "en",
     });
@@ -231,5 +244,23 @@ describe("decision engine V2.2", () => {
     assert.equal(d.recommendation.direction, "hold");
     assert.equal(HARD.MIN_SCOUT_SCORE, 60);
     assert.equal(HARD.MIN_RR, 1.5);
+  });
+
+  it("blocks adding into a clear extension", () => {
+    const snap = emptySnap();
+    snap.book.positions = [{ symbol: "BTC", qty: 0.2, avg: 100_000, pnlPct: 2.1 }];
+    snap.tickers[0]!.vsSma = 1.4;
+    snap.tickers[0]!.rsi = 58;
+    const d = decisionEngine({
+      vesper: vesper(82),
+      ash: ash(35),
+      kai: kai("ready", "buy", 91, 3.08),
+      damian: damian(20),
+      snap,
+      locale: "en",
+    });
+    assert.equal(d.gate.portfolio, false);
+    assert.equal(d.gate.passed, false);
+    assert.match(d.gate.reasons.join(" "), /extension/);
   });
 });

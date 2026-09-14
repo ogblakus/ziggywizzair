@@ -12,28 +12,55 @@ function clamp01(n: number) {
   return clamp(n, 0, 1);
 }
 
+export function sessionRange(t: TickerSnapshot): number {
+  const range = t.high - t.low;
+  return range > 0 && Number.isFinite(range) ? range : 0;
+}
+
+/** Floor on stop distance: 35% of session range or 40 bps, whichever is larger. */
+export function minStopDist(t: TickerSnapshot): number {
+  const px = markOf(t);
+  if (!(px > 0)) return 0;
+  return Math.max(sessionRange(t) * 0.35, px * 0.004);
+}
+
+function sittingOnExtreme(t: TickerSnapshot, side: Side): boolean {
+  const range = sessionRange(t);
+  const px = markOf(t);
+  if (!(range > 0) || !(px > 0)) return false;
+  const retrace = side === "buy" ? (t.high - px) / range : (px - t.low) / range;
+  return retrace < 0.12;
+}
+
 /**
  * Spec §9 — code owns the momentum score.
- * 25% price expansion, 20% rvol, 20% structure, 15% SMA, 10% RSI, 10% HTF.
+ * 25% price expansion, 20% rvol, 20% session structure, 15% SMA, 10% RSI, 10% trend alignment.
+ * Does NOT read Kai labels (buySetup / retrace / wick / tf).
  */
 export function vesperMomentumScore(t: TickerSnapshot, side: Side): number {
   const dir = side === "buy" ? 1 : -1;
+  const px = markOf(t);
   const price = clamp01((dir * t.changePct) / 1.2) * 25;
-  let rvol = 8;
-  if (t.rvol == null) rvol = 10;
+  let rvol = 2;
+  if (t.rvol == null) rvol = 2;
   else if (t.rvol >= 1.3) rvol = 20;
   else if (t.rvol >= 0.9) rvol = 16;
   else if (t.rvol >= 0.7) rvol = 12;
   else if (t.rvol >= 0.55) rvol = 8;
   else rvol = 2;
-  const retrace = side === "buy" ? t.buyRetrace : t.sellRetrace;
-  const wick = side === "buy" ? t.buyWick : t.sellWick;
-  const setup = side === "buy" ? t.buySetup : t.sellSetup;
+  const range = sessionRange(t);
+  const rangePct = px > 0 ? range / px : 0;
   let structure = 6;
-  if (setup === "pullback") structure += 8;
-  if (retrace != null && retrace >= 18 && retrace <= 62) structure += 6;
-  if (wick) structure += 4;
-  if (setup === "chase") structure = Math.min(structure, 6);
+  if (rangePct >= 0.008) {
+    const retrace = side === "buy" ? (t.high - px) / range : (px - t.low) / range;
+    if (retrace >= 0.18 && retrace <= 0.62) structure = 16;
+    else if (retrace < 0.12) structure = 6;
+    else structure = 10;
+    const bodyLow = Math.min(t.open, px);
+    const bodyHigh = Math.max(t.open, px);
+    if (side === "buy" && (bodyLow - t.low) / range >= 0.38) structure += 4;
+    if (side === "sell" && (t.high - bodyHigh) / range >= 0.38) structure += 4;
+  }
   structure = clamp(structure, 0, 20);
   const sma = clamp01((dir * t.vsSma) / 1.2) * 15;
   const rsi =
@@ -52,8 +79,8 @@ export function vesperMomentumScore(t: TickerSnapshot, side: Side): number {
           : t.rsi <= 28
             ? 3
             : 2;
-  const tf = side === "buy" ? t.buyTf : t.sellTf;
-  const htf = tf === "4h" ? 10 : tf === "1h" ? 8 : setup === "pullback" ? 6 : 3;
+  const aligned = dir * t.changePct > 0.3 && dir * t.vsSma > 0.2;
+  const htf = aligned ? 10 : 3;
   return clamp(price + rvol + structure + sma + rsi + htf, 0, 100);
 }
 
@@ -81,7 +108,7 @@ export function ashReversionScore(t: TickerSnapshot, side: Side): number {
             ? 8
             : 2;
   const wick = side === "buy" ? t.buyWick : t.sellWick;
-  const failed = wick ? 14 : (side === "buy" ? t.sellSetup : t.buySetup) === "chase" ? 10 : 4;
+  const failed = wick ? 14 : sittingOnExtreme(t, side === "buy" ? "sell" : "buy") ? 10 : 4;
   const chg = Math.abs(t.changePct);
   let exhaust = 8;
   if (t.rvol != null && t.rvol < 0.7 && chg > 0.8) exhaust = 16;
@@ -117,24 +144,38 @@ export function kaiGeometry(t: TickerSnapshot, side: Side): {
   target: number | null;
   rr: number;
 } {
-  const px = markOf(t);
-  const entry = kaiLimit(t, side) ?? (px > 0 ? px : null);
+  const entry = kaiLimit(t, side);
   if (!(entry && entry > 0)) return { entry: null, invalidation: null, target: null, rr: 0 };
   const fvg = side === "buy" ? t.buyFvg : t.sellFvg;
-  let inv =
+  let inv: number | null =
     side === "buy"
       ? fvg && fvg.low < entry
         ? fvg.low * 0.998
-        : entry * 0.992
+        : t.low < entry
+          ? t.low
+          : null
       : fvg && fvg.high > entry
         ? fvg.high * 1.002
-        : entry * 1.008;
-  if (side === "buy" && inv >= entry) inv = entry * 0.992;
-  if (side === "sell" && inv <= entry) inv = entry * 1.008;
-  const risk = Math.abs(entry - inv);
-  if (!(risk > 0)) return { entry, invalidation: inv, target: null, rr: 0 };
-  const target = side === "buy" ? entry + risk * 2.5 : entry - risk * 2.5;
-  return { entry, invalidation: inv, target, rr: Number((Math.abs(target - entry) / risk).toFixed(2)) };
+        : t.high > entry
+          ? t.high
+          : null;
+  if (inv == null) return { entry, invalidation: null, target: null, rr: 0 };
+  if ((side === "buy" && inv >= entry) || (side === "sell" && inv <= entry)) {
+    return { entry, invalidation: null, target: null, rr: 0 };
+  }
+  const minRisk = minStopDist(t);
+  let stop = inv;
+  let risk = Math.abs(entry - stop);
+  if (minRisk > 0 && risk < minRisk) {
+    stop = side === "buy" ? entry - minRisk : entry + minRisk;
+    risk = minRisk;
+  }
+  if (!(risk > 0)) return { entry, invalidation: stop, target: null, rr: 0 };
+  const target = side === "buy" ? (t.high > entry ? t.high : null) : (t.low < entry ? t.low : null);
+  if (target == null) return { entry, invalidation: stop, target: null, rr: 0 };
+  const reward = Math.abs(target - entry);
+  if (!(reward > 0)) return { entry, invalidation: stop, target: null, rr: 0 };
+  return { entry, invalidation: stop, target, rr: Number((reward / risk).toFixed(2)) };
 }
 
 export function kaiSetupFor(t: TickerSnapshot, side: Side): KaiSetup {

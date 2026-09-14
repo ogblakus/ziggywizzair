@@ -22,6 +22,7 @@ import type {
   IrisOutput,
   KaiOutput,
   KaiSetup,
+  KaiStatus,
   Locale,
   VesperIdea,
   VesperOutput,
@@ -50,6 +51,12 @@ import { ashReversionScore, damianSectorScores, kaiSetupFor, vesperMomentumScore
 import type { MarketSnapshot, TickerSnapshot } from "@/lib/types";
 
 const MAX_TOKENS = 420;
+
+const KAI_RANK: Record<KaiStatus, number> = { blocked: 0, wait: 1, ready: 2 };
+
+function clampKaiStatus(math: KaiStatus, llm: KaiStatus): KaiStatus {
+  return KAI_RANK[llm] < KAI_RANK[math] ? llm : math;
+}
 
 function nums(t: TickerSnapshot, locale: Locale) {
   const chg = `${t.changePct >= 0 ? "+" : ""}${t.changePct.toFixed(2)}%`;
@@ -153,10 +160,11 @@ export async function runKai(snap: MarketSnapshot, lookingAt: string | null, loc
       if (t) {
         const math = kaiSetupFor(t, parsed.side);
         const statusRaw = (parsed.status ?? math.status).toString().toLowerCase();
-        const status = statusRaw === "ready" || statusRaw === "wait" ? statusRaw : "blocked";
+        const llmStatus: KaiStatus = statusRaw === "ready" || statusRaw === "wait" ? statusRaw : "blocked";
+        const status = clampKaiStatus(math.status, llmStatus);
         scanFromLlm.push({
           ...math,
-          status: math.status === "blocked" ? "blocked" : status,
+          status,
           reason: clipText(parsed.reason, 280) || math.reason,
           evidence: parsed.evidence?.length ? parsed.evidence.slice(0, 6) : math.evidence,
         });

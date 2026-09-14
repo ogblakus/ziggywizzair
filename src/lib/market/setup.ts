@@ -114,6 +114,10 @@ export function candleSetup(series: TickBar[], mark: number, side: "buy" | "sell
 
 function pickSetup(htf: HtfPack | undefined, mark: number, side: "buy" | "sell"): CandleSetup {
   if (!htf) return EMPTY;
+  if (htf.m15.length >= 6) {
+    const m15 = candleSetup(htf.m15, mark, side, "15m");
+    if (m15.kind === "chase") return m15;
+  }
   const ranked: Array<{ tf: SetupTf; bars: TickBar[] }> = [
     { tf: "4h", bars: htf.h4 },
     { tf: "1h", bars: htf.h1 },

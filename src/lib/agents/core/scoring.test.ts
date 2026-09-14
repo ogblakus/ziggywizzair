@@ -25,9 +25,26 @@ describe("V2 scoring", () => {
     assert.equal(bandOf(85), "high");
   });
 
+  it("holds a tradable band down to 57 (hysteresis) and still cliffs on a fresh entry", () => {
+    assert.equal(bandOf(59, "small"), "small");
+    assert.equal(bandOf(57, "normal"), "small");
+    assert.equal(bandOf(56, "small"), "wait");
+    assert.equal(bandOf(59, "wait"), "wait");
+    assert.equal(bandOf(59, null), "wait");
+  });
+
   it("flags high disagreement when Vesper and Ash oppose at high score", () => {
     const agree = disagreement(89, -82, 91);
     assert.equal(agree.level, "low");
+  });
+
+  it("does not treat NO_SIGNAL as high agreement", () => {
+    const two = disagreement(90, 0, 90);
+    assert.equal(two.level, "medium");
+    const one = disagreement(90, 0, 0);
+    assert.equal(one.level, "medium");
+    const weak = disagreement(90, 19, 90);
+    assert.equal(weak.level, "medium");
   });
 
   it("keeps the hard gates from the spec", () => {

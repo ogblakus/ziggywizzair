@@ -126,7 +126,15 @@ export function kaiKind(tk: TickerSnapshot, side: "buy" | "sell"): KaiKind {
   const setup = side === "buy" ? tk.buySetup : tk.sellSetup;
   if (setup === "chase") return "chase";
   const limit = side === "buy" ? tk.buyLimit : tk.sellLimit;
-  if (setup === "pullback" && limit && limit > 0) return "ready";
+  if (setup === "pullback" && limit && limit > 0) {
+    const range = tk.high - tk.low;
+    const px = markOf(tk);
+    if (range > 0 && px > 0) {
+      const retrace = side === "buy" ? (tk.high - px) / range : (px - tk.low) / range;
+      if (retrace < 0.12) return "chase";
+    }
+    return "ready";
+  }
   return "wait";
 }
 
@@ -135,9 +143,7 @@ export function kaiLimit(tk: TickerSnapshot, side: "buy" | "sell"): number | und
   if (ready && ready > 0) return Number(ready.toFixed(4));
   const fvg = side === "buy" ? tk.buyFvg : tk.sellFvg;
   if (fvg) return Number(((fvg.low + fvg.high) / 2).toFixed(4));
-  const px = markOf(tk);
-  if (!(px > 0)) return undefined;
-  return Number((side === "buy" ? px * 0.998 : px * 1.002).toFixed(4));
+  return undefined;
 }
 
 export function rankKai(ideas: Idea[], of: (sym: string) => TickerSnapshot | undefined): {

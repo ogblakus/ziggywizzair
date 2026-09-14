@@ -1,4 +1,5 @@
 import { newRunId } from "@/lib/agents/core/hash";
+import { stampAgentMeta } from "@/lib/agents/core/versions";
 import type {
   AshIdea,
   AshOutput,
@@ -81,7 +82,7 @@ export function vesperFallback(snap: MarketSnapshot, locale: Locale, hash: strin
     if (ideas.length >= 3) break;
   }
   const top = ideas[0];
-  return {
+  return stampAgentMeta({
     agent: "vesper",
     runId: newRunId(),
     timestamp: Date.now(),
@@ -96,7 +97,7 @@ export function vesperFallback(snap: MarketSnapshot, locale: Locale, hash: strin
       : { direction: "hold", strength: 0, confidence: 0.3 },
     knowledgeUsed: VESPER_KNOWLEDGE.slice(0, 3),
     source: "local",
-  };
+  });
 }
 
 export function ashFallback(snap: MarketSnapshot, locale: Locale, hash: string): AshOutput {
@@ -133,7 +134,7 @@ export function ashFallback(snap: MarketSnapshot, locale: Locale, hash: string):
     if (ideas.length >= 3) break;
   }
   const top = ideas[0];
-  return {
+  return stampAgentMeta({
     agent: "ash",
     runId: newRunId(),
     timestamp: Date.now(),
@@ -142,10 +143,10 @@ export function ashFallback(snap: MarketSnapshot, locale: Locale, hash: string):
     marketView: top ? (top.side === "sell" ? "reversion_short" : "reversion_long") : "hold",
     recommendation: top
       ? { direction: top.side, strength: top.score, confidence: top.confidence }
-      : { direction: "hold", strength: 0, confidence: 0.3 },
+      : { direction: "hold", strength: 0, confidence: 0.45 },
     knowledgeUsed: ASH_KNOWLEDGE.slice(0, 3),
     source: "local",
-  };
+  });
 }
 
 export function kaiFallback(snap: MarketSnapshot, locale: Locale, hash: string): KaiOutput {
@@ -167,7 +168,7 @@ export function kaiFallback(snap: MarketSnapshot, locale: Locale, hash: string):
     return { ...row, reason };
   });
   const primary = scan[0] ?? null;
-  return {
+  return stampAgentMeta({
     agent: "kai",
     runId: newRunId(),
     timestamp: Date.now(),
@@ -180,7 +181,7 @@ export function kaiFallback(snap: MarketSnapshot, locale: Locale, hash: string):
         : { direction: "hold", strength: 0, confidence: 0.3 },
     knowledgeUsed: KAI_KNOWLEDGE.slice(0, 3),
     source: "local",
-  };
+  });
 }
 
 function stanceFromScore(score: number): Stance {
@@ -259,7 +260,7 @@ export function damianFallback(snap: MarketSnapshot, locale: Locale, hash: strin
         .join(" · ") || "pogoda mieszana"
     }.`,
   );
-  return {
+  return stampAgentMeta({
     agent: "damian",
     runId: newRunId(),
     timestamp: Date.now(),
@@ -273,7 +274,7 @@ export function damianFallback(snap: MarketSnapshot, locale: Locale, hash: strin
     recommendation: { direction: "hold", strength: 0, confidence: 0.55 },
     knowledgeUsed: DAMIAN_KNOWLEDGE.slice(0, 3),
     source: "local",
-  };
+  });
 }
 
 export function kaiValidate(snap: MarketSnapshot, symbol: string, side: "buy" | "sell", locale: Locale): KaiSetup | null {
@@ -302,7 +303,7 @@ export function irisRules(input: {
     if (decision.band === "small") return "reduce";
     return "approve";
   })();
-  return {
+  return stampAgentMeta({
     agent: "iris",
     runId: newRunId(),
     timestamp: Date.now(),
@@ -341,5 +342,5 @@ export function irisRules(input: {
           : `Wielkość ${decision.risk.sizePct.toFixed(1)}% · wynik ${decision.finalScore.toFixed(0)} · zgoda ${decision.agreement.level}.`,
     ),
     source: "rules",
-  };
+  });
 }

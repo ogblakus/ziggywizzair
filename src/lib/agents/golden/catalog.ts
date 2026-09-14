@@ -333,7 +333,7 @@ export const GOLDEN: GoldenScenario[] = [
     group: "portfolio",
     ready: true,
     snap: () =>
-      snap([BTC_LONG(), quietTicker("ETH")], {
+      snap([longPullback("BTC", { vsSma: 0.8, rsi: 58, changePct: 0.9 }), quietTicker("ETH")], {
         cash: 70_000,
         positions: [{ symbol: "BTC", qty: 0.2, avg: 95_000, pnlPct: 2.1 }],
       }),
@@ -478,7 +478,7 @@ export const GOLDEN: GoldenScenario[] = [
       band: "wait",
       minScore: 45,
       maxScore: 59,
-      agreement: "high",
+      agreement: "medium",
       vesperVote: "buy",
       kaiVote: "buy",
       ashVote: "hold",
@@ -497,9 +497,9 @@ export const GOLDEN: GoldenScenario[] = [
     expect: {
       order: "absent",
       band: "wait",
-      minScore: 59,
+      minScore: 45,
       maxScore: 59.99,
-      agreement: "high",
+      agreement: "medium",
       vesperVote: "buy",
       kaiVote: "buy",
       irisSizePct: 0,
@@ -507,21 +507,19 @@ export const GOLDEN: GoldenScenario[] = [
   },
   {
     id: "33",
-    name: "aligned tape just at 60 — small, ticket prints",
+    name: "softer 4h FVG under independent Vesper stays wait (was 60.01 artifact)",
     group: "bands",
     ready: true,
     snap: () => snap([justAtBand60("BTC")]),
     expect: {
-      order: "present",
-      side: "buy",
-      symbol: "BTC",
-      qtyPositive: true,
-      band: "small",
-      minScore: 60,
-      maxScore: 74.99,
-      agreement: "high",
+      order: "absent",
+      band: "wait",
+      minScore: 45,
+      maxScore: 59.99,
+      agreement: "medium",
       vesperVote: "buy",
       kaiVote: "buy",
+      irisSizePct: 0,
     },
   },
   {

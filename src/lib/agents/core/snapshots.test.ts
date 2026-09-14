@@ -68,6 +68,22 @@ describe("V2 private snapshots", () => {
     assert.match(raw, /cryptoMcap/);
   });
 
+  it("does not leak Kai setup verdicts to Vesper or Ash", () => {
+    const s = snap();
+    const v = JSON.stringify(vesperSnapshot(s, "ETH"));
+    const a = JSON.stringify(ashSnapshot(s, "ETH"));
+    for (const raw of [v, a]) {
+      assert.equal(raw.includes("buySetup"), false);
+      assert.equal(raw.includes("sellSetup"), false);
+      assert.equal(raw.includes("buyRetrace"), false);
+      assert.equal(raw.includes("buyFvg"), false);
+      assert.equal(raw.includes("buyTf"), false);
+      assert.equal(raw.includes("pullback"), false);
+    }
+    const k = JSON.stringify(kaiSnapshot(s, "ETH"));
+    assert.match(k, /pullback/);
+  });
+
   it("hands Vesper the code-owned momentum math", () => {
     const v = vesperSnapshot(snap(), null);
     assert.ok(v.tickers[0]?.math.long > 0);

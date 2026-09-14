@@ -1,10 +1,20 @@
 import type { AgentId } from "@/lib/agents/personas";
-import type { SectorId, Stance } from "@/lib/types";
+import type { ProposedOrder, SectorId, Stance } from "@/lib/types";
 
 export type AgentSource = "llm" | "local" | "rules";
 export type Side = "buy" | "sell";
 export type Direction = Side | "hold";
 export type Locale = "en" | "pl";
+
+/** Shared audit fields. Scouts also carry marketStateHash; Iris may omit it. */
+export type AgentEnvelope = {
+  runId: string;
+  timestamp: number;
+  source: AgentSource;
+  promptVersion?: string;
+  knowledgeVersion?: string;
+  schemaVersion?: string;
+};
 
 export type Recommendation = {
   direction: Direction;
@@ -34,17 +44,14 @@ export type VesperIdea = {
   thesis: string;
 };
 
-export type VesperOutput = {
+export type VesperOutput = AgentEnvelope & {
   agent: "vesper";
-  runId: string;
-  timestamp: number;
   marketStateHash: string;
   ideas: VesperIdea[];
   marketView: "bullish" | "bearish" | "neutral";
   noTradeReason: string | null;
   recommendation: Recommendation;
   knowledgeUsed: string[];
-  source: AgentSource;
 };
 
 export type AshIdea = {
@@ -59,16 +66,13 @@ export type AshIdea = {
   thesis: string;
 };
 
-export type AshOutput = {
+export type AshOutput = AgentEnvelope & {
   agent: "ash";
-  runId: string;
-  timestamp: number;
   marketStateHash: string;
   ideas: AshIdea[];
   marketView: string;
   recommendation: Recommendation;
   knowledgeUsed: string[];
-  source: AgentSource;
 };
 
 export type KaiStatus = "ready" | "wait" | "blocked";
@@ -91,16 +95,13 @@ export type KaiSetup = {
   reason: string;
 };
 
-export type KaiOutput = {
+export type KaiOutput = AgentEnvelope & {
   agent: "kai";
-  runId: string;
-  timestamp: number;
   marketStateHash: string;
   scan: KaiSetup[];
   primary: KaiSetup | null;
   recommendation: Recommendation;
   knowledgeUsed: string[];
-  source: AgentSource;
 };
 
 export type DamianSector = {
@@ -110,10 +111,8 @@ export type DamianSector = {
   why: string;
 };
 
-export type DamianOutput = {
+export type DamianOutput = AgentEnvelope & {
   agent: "damian";
-  runId: string;
-  timestamp: number;
   marketStateHash: string;
   regime: "risk_on" | "cautious" | "risk_off";
   confidence: number;
@@ -123,7 +122,6 @@ export type DamianOutput = {
   summary: string;
   recommendation: Recommendation;
   knowledgeUsed: string[];
-  source: AgentSource;
 };
 
 export type IrisDecision = "approve" | "reduce" | "wait" | "reject";
@@ -141,10 +139,8 @@ export type IrisChecks = {
   rr: boolean;
 };
 
-export type IrisOutput = {
+export type IrisOutput = AgentEnvelope & {
   agent: "iris";
-  runId: string;
-  timestamp: number;
   decision: IrisDecision;
   symbol: string | null;
   side: Side | null;
@@ -160,8 +156,9 @@ export type IrisOutput = {
   riskReward: { stop: number | null; target: number | null; rr: number } | null;
   checks: IrisChecks;
   reason: string;
-  source: AgentSource;
 };
+
+export type AgentOutput = VesperOutput | AshOutput | KaiOutput | DamianOutput | IrisOutput;
 
 export type Agreement = {
   direction: Direction;
@@ -219,3 +216,10 @@ export type AgentRunMeta = {
   knowledgeVersion: string;
 };
 
+/** Named contracts — aliases onto the types the engine already uses. */
+export type Evidence = EvidenceItem;
+export type AgentContext = OrchestratorContext;
+export type Candidate = DecisionDraft;
+export type Decision = DecisionDraft;
+export type RiskDecision = IrisOutput;
+export type FinalOrder = ProposedOrder;

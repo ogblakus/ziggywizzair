@@ -94,7 +94,7 @@ export async function runCouncilSession(data: {
   const locale = data.locale === "pl" ? "pl" : "en";
   if (!snap.tickers?.length) return { ok: false, error: "Council payload too large." };
   try {
-    const session = await runOrchestrator({ snap, selected: data.selected ?? null, locale });
+    const session = await runOrchestrator({ snap, selected: data.selected ?? null, locale, last: data.last ?? null });
     return { ok: true, result: session.result };
   } catch {
     return { ok: true, result: runLocalV2({ snap, selected: data.selected ?? null, locale }) };

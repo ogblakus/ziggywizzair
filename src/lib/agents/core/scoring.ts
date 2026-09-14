@@ -25,17 +25,27 @@ export const HARD = {
   SAMPLE_FOR_WEIGHT: 30,
 } as const;
 
-export function bandOf(score: number): ScoreBand {
+export function bandOf(score: number, prev: ScoreBand | null = null): ScoreBand {
+  const enter = (() => {
+    if (score < 45) return "reject" as const;
+    if (score < 60) return "wait" as const;
+    if (score < 75) return "small" as const;
+    if (score < 85) return "normal" as const;
+    return "high" as const;
+  })();
+  const held = prev === "small" || prev === "normal" || prev === "high";
+  if (!held) return enter;
   if (score < 45) return "reject";
-  if (score < 60) return "wait";
-  if (score < 75) return "small";
-  if (score < 85) return "normal";
-  return "high";
+  if (score < 57) return "wait";
+  if (score < 60) return "small";
+  return enter;
 }
 
-/** Signed contributions are already in the candidate's direction frame. */
+/** Signed contributions are already in the candidate's direction frame. 0 / |n|<40 is NO_SIGNAL, not agreement. */
 export function disagreement(vesper: number, ash: number, kai: number): Agreement {
-  const signed = [vesper, ash, kai].filter((n) => n !== 0);
+  const SIGNAL = 40;
+  const norm = (n: number) => (Math.abs(n) < SIGNAL ? 0 : n);
+  const signed = [norm(vesper), norm(ash), norm(kai)].filter((n) => n !== 0);
   if (signed.length < 2) {
     const dir = vesper >= ash ? (vesper >= 0 ? "buy" : "sell") : ash >= 0 ? "buy" : "sell";
     return { direction: Math.abs(vesper) < 40 && Math.abs(ash) < 40 ? "hold" : dir, level: "medium", score: 0.6 };
@@ -46,7 +56,8 @@ export function disagreement(vesper: number, ash: number, kai: number): Agreemen
   const agreeMag = signed.filter((n) => (pos >= neg ? n > 0 : n < 0)).reduce((s, n) => s + Math.abs(n), 0);
   const score = agreeMag / mag;
   const conflict = (vesper >= 60 && ash <= -60) || (vesper <= -60 && ash >= 60);
-  const level = conflict ? "low" : score >= 0.75 ? "high" : score >= 0.55 ? "medium" : "low";
+  let level: Agreement["level"] = conflict ? "low" : score >= 0.75 ? "high" : score >= 0.55 ? "medium" : "low";
+  if (signed.length < 3 && level === "high") level = "medium";
   const direction = pos === neg ? "hold" : pos > neg ? "buy" : "sell";
   return { direction, level, score: Number(score.toFixed(2)) };
 }
