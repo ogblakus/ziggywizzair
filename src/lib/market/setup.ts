@@ -1,4 +1,5 @@
 import { rsi, sma } from "@/lib/market/engine";
+import { volatilityFeatures } from "@/lib/market/volatility";
 import type { HtfPack, SessionPrint, SetupTf, TickBar } from "@/lib/types";
 
 export type CandleKind = "pullback" | "chase" | "none";
@@ -168,6 +169,7 @@ export function analysisSnapshot(htf: HtfPack | undefined, mark: number) {
     vsSma: mean && mark > 0 ? ((mark - mean) / mean) * 100 : 0,
     rvol: relativeVolume(pack.m15.length >= 8 ? pack.m15 : bars),
     session: notableSession(pack.m15),
+    vol: volatilityFeatures(pack.m15.length ? pack.m15 : null),
     ...packFields(buy, "buy"),
     ...packFields(sell, "sell"),
   };

@@ -58,6 +58,7 @@ export function disagreement(vesper: number, ash: number, kai: number): Agreemen
   const conflict = (vesper >= 60 && ash <= -60) || (vesper <= -60 && ash >= 60);
   let level: Agreement["level"] = conflict ? "low" : score >= 0.75 ? "high" : score >= 0.55 ? "medium" : "low";
   if (signed.length < 3 && level === "high") level = "medium";
+  if (pos > 0 && neg > 0 && level === "high") level = "medium";
   const direction = pos === neg ? "hold" : pos > neg ? "buy" : "sell";
   return { direction, level, score: Number(score.toFixed(2)) };
 }

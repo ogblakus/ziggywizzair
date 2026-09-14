@@ -1,6 +1,6 @@
 import { marketStateHash } from "@/lib/agents/core/hash";
 import type { Locale } from "@/lib/agents/core/types";
-import { applyRestingLimitGate, decisionEngine, irisChecks, stalledCut } from "@/lib/agents/decision-engine";
+import { applyRestingLimitGate, decisionEngine, hysteresisOf, irisChecks, stalledCut } from "@/lib/agents/decision-engine";
 import { validateAndFinalize } from "@/lib/agents/finalize";
 import {
   ashFallback,
@@ -31,8 +31,8 @@ export function runLocalV2(input: {
   const kaiScanOut = kaiFallback(snap, locale, hash);
   const damian = damianFallback(snap, locale, hash);
   const cut = stalledCut(snap);
-  const prevBand = input.last?.band ?? null;
-  let decision = decisionEngine({ vesper, ash, kai: kaiScanOut, damian, snap, locale, cut, prevBand });
+  const lastHysteresis = hysteresisOf(input.last);
+  let decision = decisionEngine({ vesper, ash, kai: kaiScanOut, damian, snap, locale, cut, lastHysteresis });
 
   let kai = kaiScanOut;
   if (decision.symbol && decision.side) {
@@ -49,7 +49,7 @@ export function runLocalV2(input: {
           confidence: validated.status === "ready" ? 0.72 : validated.status === "wait" ? 0.55 : 0.35,
         },
       };
-      decision = decisionEngine({ vesper, ash, kai, damian, snap, locale, validated, cut, prevBand });
+      decision = decisionEngine({ vesper, ash, kai, damian, snap, locale, validated, cut, lastHysteresis });
     }
   }
 

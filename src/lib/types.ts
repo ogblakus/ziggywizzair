@@ -210,6 +210,19 @@ export type TickerSnapshot = {
   rvol?: number | null;
   /** Sharp print around Lon/NY/Tyo open on 15m, if any. */
   session?: SessionPrint | null;
+  /**
+   * Phase-1 Alpha Research: Wilder ATR-14 on 15m plus |Δclose|/ATR.
+   * Null/omitted when the 15m series is too short. Decision Engine ignores this.
+   */
+  vol?: {
+    method: "wilder";
+    period: number;
+    tf: "15m";
+    atr: number | null;
+    atrPct: number | null;
+    normalizedMove: number | null;
+    signedMove?: number | null;
+  } | null;
 };
 
 export type MacroTape = {

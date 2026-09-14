@@ -1,6 +1,6 @@
-export const DECISION_ENGINE_VERSION = "2.3";
+export const DECISION_ENGINE_VERSION = "2.4";
 export const STRATEGY_VERSION = 3;
-export const SCHEMA_VERSION = "2.3";
+export const SCHEMA_VERSION = "2.4";
 
 export const PROMPT_VERSION = {
   vesper: "2.1",

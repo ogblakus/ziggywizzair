@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { runLocalV2 } from "./local-v2.ts";
-import type { MarketSnapshot } from "../types.ts";
+import { justBelowBand60, snap as goldenSnap } from "./golden/fixtures.ts";
+import type { CouncilResult, MarketSnapshot } from "../types.ts";
 
 function snap(): MarketSnapshot {
   return {
@@ -44,5 +45,54 @@ describe("runLocalV2", () => {
     assert.ok(result.band);
     const raw = JSON.stringify(result);
     assert.equal(raw.includes("lastCouncil"), false);
+  });
+
+  it("hysteresis is per-symbol and per-side, not a global last band", () => {
+    const tape = goldenSnap([justBelowBand60("BTC")]);
+    const fresh = runLocalV2({ snap: tape, locale: "en" });
+    assert.equal(fresh.order, null);
+    assert.equal(fresh.band, "wait");
+
+    const lastEth: CouncilResult = {
+      ...fresh,
+      band: "small",
+      order: { side: "buy", symbol: "ETH", qty: 1, rationale: "last ETH" },
+    };
+    const fromEth = runLocalV2({ snap: tape, locale: "en", last: lastEth });
+    assert.equal(fromEth.order, null);
+    assert.equal(fromEth.band, "wait");
+
+    const lastBtc: CouncilResult = {
+      ...fresh,
+      band: "small",
+      order: { side: "buy", symbol: "BTC", qty: 0.03, rationale: "last BTC" },
+    };
+    const fromBtc = runLocalV2({ snap: tape, locale: "en", last: lastBtc });
+    assert.ok(fromBtc.order);
+    assert.equal(fromBtc.order?.symbol, "BTC");
+    assert.equal(fromBtc.band, "small");
+
+    const lastOpp: CouncilResult = {
+      ...fresh,
+      band: "small",
+      order: { side: "sell", symbol: "BTC", qty: 0.03, rationale: "last short" },
+    };
+    const fromOpp = runLocalV2({ snap: tape, locale: "en", last: lastOpp });
+    assert.equal(fromOpp.order, null);
+  });
+
+  it("Kai wait shows HOLD on the card, not the observed side", () => {
+    const result = runLocalV2({
+      snap: goldenSnap([
+        justBelowBand60("BTC", {
+          buySetup: "none",
+          buyLimit: undefined,
+          buyFvg: null,
+        }),
+      ]),
+      locale: "en",
+    });
+    const kai = result.agents.find((a) => a.id === "kai");
+    assert.equal(kai?.vote, "hold");
   });
 });

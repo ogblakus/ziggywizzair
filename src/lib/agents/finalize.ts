@@ -57,11 +57,11 @@ function mapAgents(
       };
     }
     if (p.id === "kai") {
-      const blocked = !k || k.status === "blocked";
+      const ready = Boolean(k && k.status === "ready");
       return {
         id: p.id,
         thesis: k?.reason || "No name this round.",
-        vote: blocked ? "hold" : k.side,
+        vote: ready && k ? k.side : "hold",
         symbol: k?.symbol ?? null,
         conviction: kai.recommendation.confidence,
         sizePct: 0,

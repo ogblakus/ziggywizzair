@@ -123,7 +123,7 @@ export function decisionEngine(input: {
   locale: Locale;
   validated?: KaiSetup | null;
   cut?: { symbol: string; side: Side } | null;
-  prevBand?: ScoreBand | null;
+  lastHysteresis?: { symbol: string; side: Side; band: ScoreBand } | null;
 }): DecisionDraft {
   const { vesper, ash, kai, damian, snap, locale } = input;
   const cards = snap.scorecard ?? [];
@@ -194,7 +194,13 @@ export function decisionEngine(input: {
     const kaiOk = cand.cut || kaiReady;
     const rrOk = cand.cut || rr >= HARD.MIN_RR;
     const passed = scoutOk && kaiOk && rrOk && port.ok && agree.level !== "low";
-    const band = cand.cut ? "normal" : !passed && agree.level === "low" ? "wait" : bandOf(final, input.prevBand ?? null);
+    const prevBand =
+      input.lastHysteresis &&
+      input.lastHysteresis.symbol === cand.symbol &&
+      input.lastHysteresis.side === cand.side
+        ? input.lastHysteresis.band
+        : null;
+    const band = cand.cut ? "normal" : !passed && agree.level === "low" ? "wait" : bandOf(final, prevBand);
     const openCount = snap.book.positions.filter((p) => Math.abs(p.qty) > 1e-8 && !p.teamLock).length;
     const pos = snap.book.positions.find((p) => p.symbol === cand.symbol);
     const adding = Boolean(pos && Math.abs(pos.qty) > 1e-8 && ((pos.qty > 0 && cand.side === "buy") || (pos.qty < 0 && cand.side === "sell")));
@@ -303,3 +309,11 @@ export function applyRestingLimitGate(
 }
 
 export { bandOf, disagreement };
+
+/** Hysteresis is per-symbol and per-side from the last printed ticket — never a global last band. */
+export function hysteresisOf(
+  last?: { order?: { symbol: string; side: Side } | null; band?: ScoreBand | null } | null,
+): { symbol: string; side: Side; band: ScoreBand } | null {
+  if (!last?.order || !last.band) return null;
+  return { symbol: last.order.symbol, side: last.order.side, band: last.band };
+}

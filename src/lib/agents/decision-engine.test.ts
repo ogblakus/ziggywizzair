@@ -141,7 +141,7 @@ function damian(cryptoScore: number): DamianOutput {
   });
 }
 
-describe("decision engine V2.3", () => {
+describe("decision engine V2.4", () => {
   it("reproduces the spec weighted example", () => {
     const final =
       82 * WEIGHTS.vesper * 1.1 +

@@ -8,7 +8,7 @@ import type {
   Locale,
   VesperOutput,
 } from "@/lib/agents/core/types";
-import { applyRestingLimitGate, decisionEngine, irisChecks, stalledCut } from "@/lib/agents/decision-engine";
+import { applyRestingLimitGate, decisionEngine, hysteresisOf, irisChecks, stalledCut } from "@/lib/agents/decision-engine";
 import { validateAndFinalize } from "@/lib/agents/finalize";
 import { kaiValidate } from "@/lib/agents/local-models";
 import { runAsh, runDamian, runIris, runKai, runVesper } from "@/lib/agents/runners";
@@ -46,8 +46,8 @@ export async function runOrchestrator(input: {
   ]);
 
   const cut = stalledCut(snap);
-  const prevBand = input.last?.band ?? null;
-  let decision = decisionEngine({ vesper, ash, kai: kaiScanOut, damian, snap, locale, cut, prevBand });
+  const lastHysteresis = hysteresisOf(input.last);
+  let decision = decisionEngine({ vesper, ash, kai: kaiScanOut, damian, snap, locale, cut, lastHysteresis });
 
   let kai = kaiScanOut;
   if (decision.symbol && decision.side) {
@@ -64,7 +64,7 @@ export async function runOrchestrator(input: {
           confidence: validated.status === "ready" ? 0.72 : validated.status === "wait" ? 0.55 : 0.35,
         },
       };
-      decision = decisionEngine({ vesper, ash, kai, damian, snap, locale, validated, cut, prevBand });
+      decision = decisionEngine({ vesper, ash, kai, damian, snap, locale, validated, cut, lastHysteresis });
     }
   }
 

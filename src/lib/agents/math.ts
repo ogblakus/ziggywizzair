@@ -17,7 +17,8 @@ export function sessionRange(t: TickerSnapshot): number {
   return range > 0 && Number.isFinite(range) ? range : 0;
 }
 
-/** Floor on stop distance: 35% of session range or 40 bps, whichever is larger. */
+/** Floor on stop distance: 35% of session range or 40 bps, whichever is larger.
+ *  True ATR is available as a research hook (`atrStopFloor`) — not used here until a k is calibrated. */
 export function minStopDist(t: TickerSnapshot): number {
   const px = markOf(t);
   if (!(px > 0)) return 0;

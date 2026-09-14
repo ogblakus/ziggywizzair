@@ -47,6 +47,15 @@ describe("V2 scoring", () => {
     assert.equal(weak.level, "medium");
   });
 
+  it("mixed signed votes cannot be high — conflict bar stays at ±60", () => {
+    const mixed = disagreement(90, -53, 90);
+    assert.equal(mixed.level, "medium");
+    const conflict = disagreement(89, -82, 91);
+    assert.equal(conflict.level, "low");
+    const aligned = disagreement(90, 50, 90);
+    assert.equal(aligned.level, "high");
+  });
+
   it("keeps the hard gates from the spec", () => {
     assert.equal(HARD.MIN_SCOUT_SCORE, 60);
     assert.equal(HARD.MIN_RR, 1.5);

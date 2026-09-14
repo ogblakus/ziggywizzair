@@ -106,7 +106,7 @@ export const GOLDEN: GoldenScenario[] = [
     group: "gates",
     ready: true,
     snap: () => snap([quietTicker("BTC")]),
-    expect: { order: "absent", agents: 5, mode: "degraded", band: "reject", vesperVote: "hold" },
+    expect: { order: "absent", agents: 5, mode: "degraded", band: "reject", vesperVote: "hold", kaiVote: "hold" },
   },
   {
     id: "04",
@@ -271,7 +271,7 @@ export const GOLDEN: GoldenScenario[] = [
           buyWick: false,
         }),
       ]),
-    expect: { order: "absent", band: "wait" },
+    expect: { order: "absent", band: "wait", kaiVote: "hold" },
   },
   {
     id: "15",

@@ -1,5 +1,6 @@
 import { ashReversionScore, vesperMomentumScore } from "@/lib/agents/math";
 import type { Locale } from "@/lib/agents/core/types";
+import { emptyVolatilityFeatures } from "@/lib/market/volatility";
 import type { MarketSnapshot, TickerSnapshot } from "@/lib/types";
 
 function n(v: number | null | undefined, d = 2): number | null {
@@ -28,6 +29,16 @@ function tickerTape(t: TickerSnapshot) {
   };
 }
 
+function researchVol(t: TickerSnapshot) {
+  const v = t.vol ?? emptyVolatilityFeatures();
+  return {
+    atr: v.atr,
+    atrPct: v.atrPct,
+    normalizedMove: v.normalizedMove,
+    signedMove: v.signedMove ?? null,
+  };
+}
+
 /** Vesper — 15m momentum from OHLC / RSI / RVOL / SMA. No Kai setup labels. */
 export function vesperSnapshot(snap: MarketSnapshot, lookingAt: string | null) {
   return {
@@ -39,6 +50,7 @@ export function vesperSnapshot(snap: MarketSnapshot, lookingAt: string | null) {
         long: Number(vesperMomentumScore(t, "buy").toFixed(1)),
         short: Number(vesperMomentumScore(t, "sell").toFixed(1)),
       },
+      research: researchVol(t),
     })),
   };
 }
@@ -54,6 +66,7 @@ export function ashSnapshot(snap: MarketSnapshot, lookingAt: string | null) {
         fadeLong: Number(ashReversionScore(t, "buy").toFixed(1)),
         fadeShort: Number(ashReversionScore(t, "sell").toFixed(1)),
       },
+      research: researchVol(t),
     })),
   };
 }
@@ -68,6 +81,7 @@ export function kaiSnapshot(snap: MarketSnapshot, lookingAt: string | null) {
       price: n(t.livePx ?? t.price, 4) ?? 0,
       rvol: n(t.rvol),
       session: t.session ?? null,
+      atr: t.vol?.atr ?? null,
       buy: {
         setup: t.buySetup ?? "none",
         limit: n(t.buyLimit, 4),
