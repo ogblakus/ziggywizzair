@@ -1,25 +1,18 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowUpRight, Minus, ArrowDownRight } from "lucide-react";
-import { toast } from "sonner";
-import { TapePanel } from "@/components/desk/tape-panel";
+import { AgentDesk } from "@/components/desk/agent-desk";
+import { DecisionEngineCard, PaperTicketCard } from "@/components/desk/decision-card";
 import { FloorControls } from "@/components/desk/autopilot-switch";
-import { Badge } from "@/components/ui/badge";
+import { TapePanel } from "@/components/desk/tape-panel";
+import { ResearchLab } from "@/components/desk/research-lab";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AGENTS, AGENT_BY_ID, type AgentId, type Vote } from "@/lib/agents/personas";
-import { recordsFrom } from "@/lib/agents/scorecard";
-import { compactPrice, qtyFmt } from "@/lib/format";
-import { sentimentBias } from "@/lib/market/macro";
-import { isLot } from "@/lib/market/universe";
-import { useDesk } from "@/lib/desk-store";
-import { cn } from "@/lib/utils";
+import { AGENT_BY_ID, type AgentId } from "@/lib/agents/personas";
 import { assetLabel } from "@/lib/i18n/labels";
-import { useT, txError, type MsgKey } from "@/lib/i18n";
-import { useTradingMode } from "@/lib/trading-mode";
-import { liveProposal } from "@/lib/desk/proposal";
+import { useDesk } from "@/lib/desk-store";
+import { useT } from "@/lib/i18n";
 
-type FloorPane = "agents" | "tape";
+type FloorPane = "agents" | "tape" | "lab";
 
 export function CouncilPanel({ onConvene }: { onConvene?: () => void }) {
   const [pane, setPane] = useState<FloorPane>("agents");
@@ -34,14 +27,23 @@ export function CouncilPanel({ onConvene }: { onConvene?: () => void }) {
       >
         <TabsList className="w-full shrink-0">
           <TabsTrigger value="agents" className="text-2xs sm:text-sm">
-            {t("floor.agents")}
+            {t("desk.agents")}
           </TabsTrigger>
           <TabsTrigger value="tape" className="text-2xs sm:text-sm">
             {t("floor.tape")}
           </TabsTrigger>
+          <TabsTrigger value="lab" className="text-2xs sm:text-sm">
+            {t("desk.lab")}
+          </TabsTrigger>
         </TabsList>
         <div className="min-h-0 flex-1 overflow-hidden">
-          {pane === "agents" ? <AgentsPane onConvene={onConvene} /> : <TapePanel />}
+          {pane === "agents" ? (
+            <AgentsPane onConvene={onConvene} />
+          ) : pane === "tape" ? (
+            <TapePanel />
+          ) : (
+            <ResearchLab />
+          )}
         </div>
       </Tabs>
     </div>
@@ -49,45 +51,16 @@ export function CouncilPanel({ onConvene }: { onConvene?: () => void }) {
 }
 
 function AgentsPane({ onConvene }: { onConvene?: () => void }) {
-  const agents = useDesk((s) => s.agents);
   const lastCouncil = useDesk((s) => s.lastCouncil);
-  const agentCalls = useDesk((s) => s.agentCalls);
-  const proposal = liveProposal(useDesk((s) => s.proposal));
-  const working = useDesk((s) => s.working);
-  const executeProposal = useDesk((s) => s.executeProposal);
-  const dismissProposal = useDesk((s) => s.dismissProposal);
-  const mode = useTradingMode((s) => s.mode);
-  const recs = recordsFrom(agentCalls ?? []);
   const t = useT();
-
-  function fill() {
-    const res = executeProposal();
-    if (!res.ok) toast.error(txError(res.error));
-    else toast.success(t("floor.filled"));
-  }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 pb-3">
         <div className="flex min-w-0 flex-wrap items-baseline gap-2">
           <h2 className="text-2xs font-medium tracking-wide text-subtle uppercase">{t("floor.council")}</h2>
-          {lastCouncil?.status?.mode === "online" ? (
-            <Badge variant="up">{t("floor.aiOnline")}</Badge>
-          ) : lastCouncil?.status?.mode === "degraded" ? (
-            <Badge variant="default">{t("floor.aiDegraded")}</Badge>
-          ) : null}
-          {lastCouncil ? (
-            <Badge
-              variant={
-                lastCouncil.mood === "risk-off"
-                  ? "down"
-                  : lastCouncil.mood === "risk-on"
-                    ? "up"
-                    : "default"
-              }
-            >
-              {t(`mood.${lastCouncil.mood}` as MsgKey)}
-            </Badge>
+          {lastCouncil?.engineVersion ? (
+            <span className="font-mono text-2xs text-subtle">V{lastCouncil.engineVersion}</span>
           ) : (
             <span className="text-2xs text-subtle">{t("floor.idle")}</span>
           )}
@@ -96,138 +69,31 @@ function AgentsPane({ onConvene }: { onConvene?: () => void }) {
       </div>
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-1">
-        {lastCouncil?.agreement?.level === "low" ? (
-          <div className="rounded-lg bg-surface px-3 py-2 text-xs text-muted shadow-[var(--shadow-border)]">
-            {t("floor.disagree")}
-            {lastCouncil.finalScore != null ? ` · ${t("floor.score", { n: lastCouncil.finalScore.toFixed(0) })}` : ""}
-            {lastCouncil.band ? ` · ${t(`floor.band.${lastCouncil.band}` as MsgKey)}` : ""}
-          </div>
-        ) : lastCouncil?.finalScore != null ? (
-          <p className="px-0.5 text-2xs text-subtle">
-            {t("floor.score", { n: lastCouncil.finalScore.toFixed(0) })}
-            {lastCouncil.band ? ` · ${t(`floor.band.${lastCouncil.band}` as MsgKey)}` : ""}
-          </p>
-        ) : null}
-        <DamianCard />
-
-        <p className="px-0.5 text-2xs font-medium tracking-wide text-subtle uppercase">{t("floor.specialists")}</p>
-        <ul className="space-y-2">
-          {AGENTS.filter((p) => p.id === "vesper" || p.id === "ash" || p.id === "kai").map((persona) => {
-            const speech = agents.find((a) => a.id === persona.id);
-            const reading = speech?.status === "reading";
-            const rec = recs.find((r) => r.id === persona.id);
-            return (
-              <li key={persona.id} className="rounded-lg bg-elevated p-3.5 shadow-[var(--shadow-border)]">
-                <div className="flex items-start gap-3">
-                  <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-surface font-mono text-sm font-medium text-accent">
-                    {persona.mark}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <div className="text-sm font-medium">{persona.name}</div>
-                        <div className="text-xs text-subtle">
-                          {t(`role.${persona.id}` as MsgKey)}
-                          <SourceChip id={persona.id} />
-                          {rec ? (
-                            <span className="ml-1.5 text-muted">
-                              {rec.closed >= 2
-                                ? t("floor.hits", { wins: rec.wins, closed: rec.closed })
-                                : t("floor.hitsSoon")}
-                              {!rec.trusted ? ` · ${t("floor.cold")}` : ""}
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
-                      {speech ? <VoteChip vote={speech.vote} symbol={speech.symbol} /> : null}
-                    </div>
-                    <p
-                      className={cn(
-                        "mt-1.5 text-sm leading-relaxed text-muted",
-                        reading && "shimmer-text",
-                      )}
-                    >
-                      {reading
-                        ? t("floor.reading")
-                        : lastCouncil
-                          ? (speech?.thesis ?? t(`mandate.${persona.id}` as MsgKey))
-                          : t(`mandate.${persona.id}` as MsgKey)}
-                    </p>
-                  </div>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-
-        {(() => {
-          const persona = AGENTS.find((p) => p.id === "iris")!;
-          const speech = agents.find((a) => a.id === "iris");
-          const reading = speech?.status === "reading";
-          return (
-            <div className="rounded-lg bg-elevated p-3.5 shadow-[var(--shadow-border)]">
-              <div className="flex items-start gap-3">
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-surface font-mono text-sm font-medium text-accent">
-                  {persona.mark}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <div className="text-sm font-medium">{persona.name}</div>
-                      <div className="text-xs text-subtle">
-                        {t("role.iris")}
-                        <SourceChip id="iris" />
-                      </div>
-                    </div>
-                    {speech ? <VoteChip vote={speech.vote} symbol={speech.symbol} /> : null}
-                  </div>
-                  <p className={cn("mt-1.5 text-sm leading-relaxed text-muted", reading && "shimmer-text")}>
-                    {reading
-                      ? t("floor.reading")
-                      : lastCouncil
-                        ? (speech?.thesis ?? t("mandate.iris"))
-                        : t("mandate.iris")}
-                  </p>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-
-        {proposal ? (
-          <div className="rounded-xl bg-surface p-3 shadow-[var(--shadow-border)]">
-            <div className="text-2xs font-medium tracking-wide text-subtle uppercase">{t("floor.proposed")}</div>
-            <div className="mt-1 font-mono text-sm tabular-nums">
-              {proposal.side.toUpperCase()} {qtyFmt(proposal.qty, isLot(proposal.symbol))}{" "}
-              {assetLabel(proposal.symbol)}
-              {proposal.limitPx ? ` · ${t("floor.limitAt", { px: compactPrice(proposal.limitPx) })}` : ""}
-            </div>
-            <p className="mt-1 text-xs leading-relaxed text-muted">{proposal.rationale}</p>
-            <div className="mt-3 flex gap-2">
-              <Button className="flex-1" size="sm" onClick={fill} disabled={mode === "live"}>
-                {t("floor.place")}
-              </Button>
-              <Button className="flex-1" size="sm" variant="ghost" onClick={dismissProposal}>
-                {t("floor.dismiss")}
-              </Button>
-            </div>
-            {mode === "live" ? (
-              <p className="mt-2 text-2xs leading-relaxed text-muted">{t("floor.liveNoPlace")}</p>
-            ) : null}
-          </div>
-        ) : null}
-        {working ? (
-          <div className="rounded-xl bg-surface p-3 shadow-[var(--shadow-border)]">
-            <div className="text-2xs font-medium tracking-wide text-subtle uppercase">{t("floor.working")}</div>
-            <div className="mt-1 font-mono text-sm tabular-nums">
-              {working.side.toUpperCase()} {qtyFmt(working.qty, isLot(working.symbol))} {assetLabel(working.symbol)}
-              {working.limitPx ? ` · ${t("floor.limitAt", { px: compactPrice(working.limitPx) })}` : ""}
-            </div>
-            <p className="mt-1 text-xs leading-relaxed text-muted">{working.rationale}</p>
-          </div>
-        ) : null}
+        <div className="space-y-2 lg:hidden">
+          <DecisionEngineCard compact />
+          <PaperTicketCard />
+        </div>
+        <AgentDesk />
       </div>
     </div>
+  );
+}
+
+export function FloorDock() {
+  const [pane, setPane] = useState<"tape" | "lab">("tape");
+  const t = useT();
+  return (
+    <Tabs value={pane} onValueChange={(v) => setPane(v as "tape" | "lab")} className="flex h-full min-h-0 flex-col gap-2">
+      <TabsList className="w-full shrink-0">
+        <TabsTrigger value="tape" className="text-2xs sm:text-xs">
+          {t("floor.tape")}
+        </TabsTrigger>
+        <TabsTrigger value="lab" className="text-2xs sm:text-xs">
+          {t("desk.lab")}
+        </TabsTrigger>
+      </TabsList>
+      <div className="min-h-0 flex-1 overflow-hidden">{pane === "tape" ? <TapePanel /> : <ResearchLab />}</div>
+    </Tabs>
   );
 }
 
@@ -290,11 +156,11 @@ export function ChatPane({ onAsk }: { onAsk: (q: string) => Promise<void> }) {
                   </div>
                   <div className="flex items-end gap-2">
                     <div className="mb-1 flex size-8 shrink-0 items-center justify-center rounded-md bg-surface font-mono text-xs font-medium text-accent">
-                      {AGENT_BY_ID[turn.speaker]?.mark ?? "?"}
+                      {AGENT_BY_ID[turn.speaker as AgentId]?.mark ?? "?"}
                     </div>
                     <div className="max-w-[88%] rounded-2xl rounded-bl-md bg-elevated px-3.5 py-2.5 shadow-[var(--shadow-border)]">
                       <p className="text-2xs font-medium tracking-wide text-subtle uppercase">
-                        {AGENT_BY_ID[turn.speaker]?.name ?? turn.speaker}
+                        {AGENT_BY_ID[turn.speaker as AgentId]?.name ?? turn.speaker}
                       </p>
                       {paras.map((p, j) => (
                         <p key={j} className="mt-1.5 text-sm leading-relaxed text-fg">
@@ -357,148 +223,9 @@ export function ChatPane({ onAsk }: { onAsk: (q: string) => Promise<void> }) {
               {asking ? "…" : t("floor.ask")}
             </Button>
           </div>
-          <p className="px-0.5 text-2xs leading-relaxed text-subtle">
-            {t("floor.askHint")}
-          </p>
+          <p className="px-0.5 text-2xs leading-relaxed text-subtle">{t("floor.askHint")}</p>
         </form>
       </div>
     </div>
-  );
-}
-
-function DamianCard() {
-  const t = useT();
-  const lastCouncil = useDesk((s) => s.lastCouncil);
-  const agents = useDesk((s) => s.agents);
-  const macro = useDesk((s) => s.macro);
-  const speech = agents.find((a) => a.id === "damian");
-  const reading = speech?.status === "reading";
-  const report = lastCouncil?.sentiment;
-  const sectors = report?.sectors ?? [];
-  const thesis = report?.summary ?? speech?.thesis ?? t("mandate.damian");
-  const bias = sentimentBias(sectors);
-  const fill = Math.min(100, Math.max(0, (bias + 1) * 50));
-
-  return (
-    <div className="rounded-xl bg-elevated p-3.5 shadow-[var(--shadow-border)]">
-      <div className="flex items-start gap-3">
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-surface font-mono text-sm font-medium text-accent">
-          D
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium">Damian Kaczmarski</div>
-          <div className="text-xs text-subtle">
-            {t("floor.sentiment")}
-            <SourceChip id="damian" />
-          </div>
-          <p className={cn("mt-1.5 text-sm leading-relaxed text-muted", reading && "shimmer-text")}>
-            {reading ? t("floor.reading") : thesis}
-          </p>
-          <div className="relative mt-3 h-3.5">
-            <div
-              className="absolute inset-x-0 top-1/2 h-2 -translate-y-1/2 rounded-full sentiment-track"
-            />
-            <div
-              className="absolute top-1/2 size-3.5 rounded-full bg-elevated shadow-[var(--shadow-border)] ring-2 ring-fg"
-              style={{ left: `clamp(0px, calc(${fill}% - 7px), calc(100% - 14px))`, transform: "translateY(-50%)" }}
-            />
-          </div>
-          <div className="mt-1 flex justify-between text-2xs text-subtle">
-            <span className="inline-flex items-center gap-0.5 text-down">
-              <ArrowDownRight className="size-3" />
-            </span>
-            <span className="inline-flex items-center gap-0.5 text-up">
-              <ArrowUpRight className="size-3" />
-            </span>
-          </div>
-          <dl className="mt-2 grid grid-cols-2 gap-1.5">
-            <div className="rounded-md bg-surface px-2 py-1.5">
-              <dt className="text-2xs text-subtle">{t("sector.dollar")}</dt>
-              <dd className="font-mono text-xs tabular-nums">
-                {macro?.dxy != null ? macro.dxy.toFixed(2) : "—"}
-                {macro?.dxyChg != null ? (
-                  <span className={macro.dxyChg >= 0 ? " text-up" : " text-down"}>
-                    {" "}
-                    {macro.dxyChg >= 0 ? "+" : ""}
-                    {macro.dxyChg.toFixed(2)}%
-                  </span>
-                ) : null}
-              </dd>
-            </div>
-            <div className="rounded-md bg-surface px-2 py-1.5">
-              <dt className="text-2xs text-subtle">{t("sector.vol")}</dt>
-              <dd className="font-mono text-xs tabular-nums">
-                {macro?.vix != null ? macro.vix.toFixed(1) : "—"}
-                {macro?.vixChg != null ? (
-                  <span className={macro.vixChg >= 0 ? " text-down" : " text-up"}>
-                    {" "}
-                    {macro.vixChg >= 0 ? "+" : ""}
-                    {macro.vixChg.toFixed(2)}%
-                  </span>
-                ) : null}
-              </dd>
-            </div>
-          </dl>
-          {sectors.filter((row) => row.id !== "dollar" && row.id !== "vol").length ? (
-            <ul className="mt-2 space-y-1">
-              {sectors
-                .filter((row) => row.id !== "dollar" && row.id !== "vol")
-                .map((row) => {
-                const Icon =
-                  row.stance === "bullish" ? ArrowUpRight : row.stance === "bearish" ? ArrowDownRight : Minus;
-                const tone =
-                  row.stance === "bullish" ? "text-up" : row.stance === "bearish" ? "text-down" : "text-subtle";
-                return (
-                  <li
-                    key={row.id}
-                    className="flex items-center justify-between gap-2 rounded-md bg-surface px-2 py-1.5"
-                  >
-                    <span className="text-xs text-fg">{t(`sector.${row.id}`)}</span>
-                    <Icon className={cn("size-3.5 shrink-0", tone)} aria-hidden />
-                  </li>
-                );
-              })}
-            </ul>
-          ) : null}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SourceChip({ id }: { id: AgentId }) {
-  const lastCouncil = useDesk((s) => s.lastCouncil);
-  const t = useT();
-  const src = lastCouncil?.status?.sources?.[id];
-  if (!src || src === "llm") return null;
-  return (
-    <span className="ml-1.5 font-mono text-2xs uppercase tracking-wide text-subtle">
-      {src === "rules" ? t("floor.sourceRules") : t("floor.sourceLocal")}
-    </span>
-  );
-}
-
-function VoteChip({ vote, symbol }: { vote: Vote; symbol: string | null }) {
-  const t = useT();
-  if (vote === "hold") {
-    return (
-      <span className="inline-flex items-center gap-1 text-2xs font-medium text-subtle">
-        <Minus className="size-3" />
-        {t("floor.hold")}
-      </span>
-    );
-  }
-  const Icon = vote === "buy" ? ArrowUpRight : ArrowDownRight;
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 font-mono text-2xs font-medium tabular-nums",
-        vote === "buy" ? "text-up" : "text-down",
-      )}
-    >
-      <Icon className="size-3" />
-      {vote === "buy" ? t("ticket.buyCap") : t("ticket.sellCap")}
-      {symbol ? ` ${assetLabel(symbol)}` : ""}
-    </span>
   );
 }

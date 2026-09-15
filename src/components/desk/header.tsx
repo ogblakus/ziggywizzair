@@ -3,7 +3,7 @@ import { Settings, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { AlertsButton } from "@/components/desk/alerts-button";
 import { FloorControls } from "@/components/desk/autopilot-switch";
-import { APP_NAME, ModeKicker, PlaneMark } from "@/components/desk/brand";
+import { APP_NAME, PlaneMark } from "@/components/desk/brand";
 import { SettingsPanel } from "@/components/desk/settings-panel";
 import { Button } from "@/components/ui/button";
 import {
@@ -61,7 +61,9 @@ export function DeskHeader({
                 />
               </span>
             </div>
-            <ModeKicker mode={mode} />
+            <p className="text-3xs font-medium tracking-[0.18em] text-subtle uppercase">
+              {mode === "demo" ? t("desk.engineChip") : t("desk.engineLive")}
+            </p>
           </div>
         </div>
 

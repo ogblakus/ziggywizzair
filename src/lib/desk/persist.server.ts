@@ -60,8 +60,10 @@ function asBook(raw: unknown): DeskBook | null {
 }
 
 function fileFor(userId: string) {
-  const safe = userId.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80) || "desk";
-  return join(FILE_DIR, `quorum-desk-${safe}.json`);
+  let safe = userId.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80) || "desk";
+  while (safe.startsWith("quorum-desk-")) safe = safe.slice("quorum-desk-".length);
+  if (!safe) safe = "desk";
+  return join(FILE_DIR, `${safe}.json`);
 }
 
 async function readJsonBook(path: string): Promise<DeskBook | null> {

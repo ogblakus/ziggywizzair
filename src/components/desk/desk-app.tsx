@@ -4,13 +4,13 @@ import { toast } from "sonner";
 import { bootSplashHolding, markBootSplash, TakeoffSplash } from "@/components/desk/brand";
 import { DeskTour } from "@/components/desk/desk-tour";
 import { MarketDesk } from "@/components/desk/chart-panel";
-import { CouncilPanel, ChatPane } from "@/components/desk/council-panel";
+import { CouncilPanel, ChatPane, FloorDock } from "@/components/desk/council-panel";
+import { DecisionEngineCard, PaperTicketCard } from "@/components/desk/decision-card";
 import { DeskHeader } from "@/components/desk/header";
 import { HistoryPanel } from "@/components/desk/history-panel";
 import { OpenedStrip } from "@/components/desk/opened-trades";
 import { ProposalBanner } from "@/components/desk/proposal-banner";
 import { PortfolioPanel } from "@/components/desk/portfolio-panel";
-import { TapePanel } from "@/components/desk/tape-panel";
 import { TickerStrip, Watchlist } from "@/components/desk/watchlist";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AGENTS, AGENT_BY_ID } from "@/lib/agents/personas";
@@ -516,7 +516,15 @@ export function DeskApp({ boot }: { boot: LiveMarketResult }) {
             <Watchlist />
           </section>
           <section className="min-h-0 overflow-hidden">
-            <MarketDesk />
+            <div className="flex h-full min-h-0 flex-col gap-2">
+              <div className="min-h-0 flex-1 overflow-hidden">
+                <MarketDesk />
+              </div>
+              <div className="grid max-h-[17rem] shrink-0 grid-cols-2 gap-2 overflow-y-auto">
+                <DecisionEngineCard compact />
+                <PaperTicketCard />
+              </div>
+            </div>
           </section>
           <section className="row-span-2 min-h-0 overflow-hidden">
             <Tabs
@@ -552,7 +560,7 @@ export function DeskApp({ boot }: { boot: LiveMarketResult }) {
             </Tabs>
           </section>
           <section className="min-h-0 overflow-hidden">
-            <TapePanel />
+            <FloorDock />
           </section>
         </div>
       ) : (

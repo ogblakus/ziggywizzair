@@ -12,6 +12,7 @@ import type {
   VesperOutput,
 } from "@/lib/agents/core/types";
 import { hasBlockingRestingLimit } from "@/lib/agents/decision-engine";
+import { buildDeskView } from "@/lib/agents/desk-view";
 import { gateCouncilOrder } from "@/lib/agents/quorum";
 import { teamBlocks } from "@/lib/desk/holds";
 import { clipPctOf, markOf, qtyForClip } from "@/lib/desk/size";
@@ -228,5 +229,6 @@ export function validateAndFinalize(input: {
     decisionId: decision.decisionId,
     engineVersion: DECISION_ENGINE_VERSION,
     status: { mode, sources: src },
+    view: buildDeskView({ vesper, ash, kai, damian, iris, decision }),
   };
 }

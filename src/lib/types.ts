@@ -1,4 +1,5 @@
 import type { AgentId, Vote } from "@/lib/agents/personas";
+import type { DeskView } from "@/lib/agents/desk-view";
 
 export type Side = "buy" | "sell";
 
@@ -180,6 +181,8 @@ export type CouncilResult = {
     mode: "online" | "degraded";
     sources: Record<AgentId, "llm" | "local" | "rules">;
   };
+  /** Read-only presentation payload. Ignored by the engine and goldens. */
+  view?: DeskView;
 };
 
 export type TickerSnapshot = {
