@@ -5,8 +5,9 @@ import type { DeskBook } from "@/lib/desk/engine";
 export const loadDeskBook = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    const { ensureDeskLoop, loadBook } = await import("./persist.server");
+    const { ensureDeskLoop, loadBook, tickDesk } = await import("./persist.server");
     ensureDeskLoop();
+    void tickDesk(undefined, { userId: context.userId }).catch(() => undefined);
     const book = await loadBook(context.userId);
     return { book, at: Date.now() };
   });

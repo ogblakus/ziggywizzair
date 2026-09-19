@@ -291,6 +291,13 @@ export async function tickDesk(
   }
 
   const now = Date.now();
+  try {
+    const { recordClosedResearch } = await import("@/lib/agents/research-recorder");
+    const { sqlResearchStore } = await import("@/lib/agents/research-store.server");
+    await recordClosedResearch(tape ?? [], now, sqlResearchStore());
+  } catch {
+    /* research recorder must never block paper books */
+  }
   const rows = await locked(async () => {
     const listed = await listSqlBooks();
     const seen = new Set(listed.map((r) => r.userId));
@@ -349,6 +356,7 @@ export async function saveFromClient(
 
 export function ensureDeskLoop() {
   if (g.__quorumDeskLoop) return;
+  void tickDesk().catch(() => undefined);
   g.__quorumDeskLoop = setInterval(() => {
     void tickDesk().catch(() => undefined);
   }, 60_000);
