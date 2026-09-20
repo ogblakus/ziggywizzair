@@ -294,7 +294,7 @@ export async function tickDesk(
   try {
     const { recordClosedResearch } = await import("@/lib/agents/research-recorder");
     const { sqlResearchStore } = await import("@/lib/agents/research-store.server");
-    await recordClosedResearch(tape ?? [], now, sqlResearchStore());
+    await recordClosedResearch(tape ?? [], now, sqlResearchStore(), { trigger: "tickDesk" });
   } catch {
     /* research recorder must never block paper books */
   }

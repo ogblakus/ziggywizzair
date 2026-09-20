@@ -1,0 +1,49 @@
+# Independent 15m pinger for Research Recorder.
+# Fail-closed: no HTTP call unless both secrets are set.
+# Never print CRON_SECRET. Idempotent on (bar_t, symbol) server-side.
+# RESEARCH_TICK_URL = production origin only (no path, no secret in URL).
+name: research-tick
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: none
+
+concurrency:
+  group: research-tick
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ping /api/research-tick
+        env:
+          RESEARCH_TICK_URL: ${{ secrets.RESEARCH_TICK_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RESEARCH_TICK_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "secrets missing — fail closed, no request sent"
+            exit 1
+          fi
+          url="${RESEARCH_TICK_URL%/}/api/research-tick"
+          code=$(curl -sS -o /tmp/research-tick.json -w '%{http_code}' --max-time 45 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "$url")
+          echo "http=${code}"
+          python3 - <<'PY'
+          import json
+          keys = ("ok", "count", "lastBarT", "lastInserted", "lastDuplicate", "lastError", "lastTrigger", "lastRunAt")
+          try:
+              data = json.load(open("/tmp/research-tick.json"))
+          except Exception:
+              print("body=unreadable")
+          else:
+              print({k: data.get(k) for k in keys})
+          PY
+          test "$code" = "200"

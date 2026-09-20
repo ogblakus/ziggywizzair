@@ -255,6 +255,8 @@ describe("Research recorder isolation", () => {
     assert.equal(/from ["']@\/lib\/db["']/.test(store), false);
     assert.equal(/from ["'][^"']*decision-engine/.test(store), false);
     assert.equal(/from ["'][^"']*desk\/engine/.test(store), false);
+    const tick = readFileSync(new URL("./research-tick.ts", import.meta.url), "utf8");
+    assert.equal(/from ["'][^"']*decision-engine/.test(tick), false);
   });
 
   it("golden 01 ticket and score stay identical", () => {

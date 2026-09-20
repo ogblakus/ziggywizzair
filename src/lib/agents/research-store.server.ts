@@ -40,6 +40,8 @@ export async function loadLabFromStore(symbol?: string | null): Promise<Research
     lastError: null,
     missingSymbols: [],
     gaps: [],
+    lastTrigger: null,
+    lastRunAt: null,
   };
   const status = await store.readStatus().catch(() => null);
   if (status) {
@@ -48,6 +50,8 @@ export async function loadLabFromStore(symbol?: string | null): Promise<Research
     diagnostics.lastError = status.lastError;
     diagnostics.missingSymbols = status.missingSymbols;
     diagnostics.gaps = status.gaps ?? [];
+    diagnostics.lastTrigger = status.lastTrigger ?? null;
+    diagnostics.lastRunAt = status.lastRunAt ?? null;
     if (diagnostics.lastBarT == null) diagnostics.lastBarT = status.lastBarT;
   }
   if (!diagnostics.count || diagnostics.lastBarT == null) {

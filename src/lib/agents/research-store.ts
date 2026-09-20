@@ -7,6 +7,7 @@ import {
   type ResearchDiagnostics,
   type ResearchPrint,
   type ResearchStore,
+  type ResearchTrigger,
 } from "@/lib/agents/research-recorder";
 
 export type ResearchSql = {
@@ -149,8 +150,8 @@ export class SqlResearchStore implements ResearchStore {
   async writeStatus(diag: Omit<ResearchDiagnostics, "count">) {
     const sql = await this.client();
     await sql.query(
-      `insert into research_recorder_status (id, updated_at, last_bar_t, last_inserted, last_duplicate, last_error, missing_symbols, gaps)
-       values ('default', now(), $1, $2, $3, $4, $5::jsonb, $6::jsonb)
+      `insert into research_recorder_status (id, updated_at, last_bar_t, last_inserted, last_duplicate, last_error, missing_symbols, gaps, last_trigger)
+       values ('default', now(), $1, $2, $3, $4, $5::jsonb, $6::jsonb, $7)
        on conflict (id) do update set
          updated_at = now(),
          last_bar_t = excluded.last_bar_t,
@@ -158,7 +159,8 @@ export class SqlResearchStore implements ResearchStore {
          last_duplicate = excluded.last_duplicate,
          last_error = excluded.last_error,
          missing_symbols = excluded.missing_symbols,
-         gaps = excluded.gaps`,
+         gaps = excluded.gaps,
+         last_trigger = excluded.last_trigger`,
       [
         diag.lastBarT,
         diag.lastInserted,
@@ -166,11 +168,12 @@ export class SqlResearchStore implements ResearchStore {
         diag.lastError,
         JSON.stringify(diag.missingSymbols),
         JSON.stringify(diag.gaps ?? []),
+        diag.lastTrigger,
       ],
     );
   }
 
-  async readStatus() {
+  async readStatus(): Promise<Omit<ResearchDiagnostics, "count"> | null> {
     const sql = await this.client();
     const rows = await sql<{
       last_bar_t: number | null;
@@ -179,8 +182,10 @@ export class SqlResearchStore implements ResearchStore {
       last_error: string | null;
       missing_symbols: unknown;
       gaps: unknown;
+      last_trigger: string | null;
+      updated_at: string | Date | null;
     }>`
-      select last_bar_t, last_inserted, last_duplicate, last_error, missing_symbols, gaps
+      select last_bar_t, last_inserted, last_duplicate, last_error, missing_symbols, gaps, last_trigger, updated_at
       from research_recorder_status where id = 'default' limit 1
     `;
     const r = rows[0];
@@ -195,6 +200,9 @@ export class SqlResearchStore implements ResearchStore {
       : typeof r.gaps === "string"
         ? (JSON.parse(r.gaps) as ResearchDiagnostics["gaps"])
         : [];
+    const trigger: ResearchTrigger | null =
+      r.last_trigger === "cron" || r.last_trigger === "tickDesk" ? r.last_trigger : null;
+    const runAt = r.updated_at == null ? null : new Date(r.updated_at).getTime();
     return {
       lastBarT: r.last_bar_t == null ? null : Number(r.last_bar_t),
       lastInserted: Number(r.last_inserted ?? 0),
@@ -202,6 +210,8 @@ export class SqlResearchStore implements ResearchStore {
       lastError: r.last_error ?? null,
       missingSymbols: missing,
       gaps,
+      lastTrigger: trigger,
+      lastRunAt: Number.isFinite(runAt) ? runAt : null,
     };
   }
 }

@@ -52,6 +52,8 @@ export function ResearchLab() {
                 lastError: "load failed",
                 missingSymbols: [],
                 gaps: [],
+                lastTrigger: null,
+                lastRunAt: null,
               },
             });
           }
@@ -92,6 +94,8 @@ export function ResearchLab() {
         {diag?.missingSymbols.length ? ` · ${t("desk.labMissing", { s: diag.missingSymbols.join(",") })}` : ""}
         {diag?.gaps?.length ? ` · ${t("desk.labGaps", { n: diag.gaps.reduce((a, g) => a + g.bars, 0) })}` : ""}
         {diag?.lastError ? ` · ${t("desk.labError")}` : ""}
+        {diag?.lastTrigger ? ` · ${t("desk.labTrigger", { s: diag.lastTrigger })}` : ""}
+        {diag?.lastRunAt ? ` · ${t("desk.labRun", { t: barClock(diag.lastRunAt) })}` : ""}
       </p>
 
       <div className="mt-2 flex flex-wrap gap-1">

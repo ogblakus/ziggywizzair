@@ -564,6 +564,8 @@ export const catalog: Record<string, { en: string; pl: string }> = {
   "desk.labMissing": { en: "missing {s}", pl: "brak {s}" },
   "desk.labGaps": { en: "gaps {n} bars", pl: "luki {n} świec" },
   "desk.labError": { en: "recorder error", pl: "błąd recordera" },
+  "desk.labTrigger": { en: "via {s}", pl: "przez {s}" },
+  "desk.labRun": { en: "run {t}", pl: "run {t}" },
   "desk.engineChip": { en: "V2.4 · PAPER", pl: "V2.4 · PAPER" },
   "desk.engineLive": { en: "V2.4 · LIVE", pl: "V2.4 · LIVE" },
   "login.badNick": { en: "That nickname cannot be used.", pl: "Tego nicku nie da się użyć." },

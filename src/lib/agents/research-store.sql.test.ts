@@ -59,6 +59,11 @@ describe("Research SQL store (in-memory PGlite)", { timeout: 30_000 }, () => {
       "utf8",
     );
     await pg.exec(migration);
+    const migration8 = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../../../migrations/0008_research_recorder_trigger.sql"),
+      "utf8",
+    );
+    await pg.exec(migration8);
 
     const sql = wrapSql(pg);
     const store = new SqlResearchStore(async () => sql);
@@ -108,6 +113,13 @@ describe("Research SQL store (in-memory PGlite)", { timeout: 30_000 }, () => {
     `;
     assert.equal(sol[0]?.atr, null);
     assert.equal(sol[0]?.signed_move, null);
+
+    const tagged = await recordClosedResearch(quotes, now, store, { trigger: "cron" });
+    assert.equal(tagged.lastInserted, 0);
+    assert.equal(tagged.lastTrigger, "cron");
+    const status = await store.readStatus();
+    assert.equal(status?.lastTrigger, "cron");
+    assert.ok(status?.lastRunAt);
 
     await pg.close();
   });

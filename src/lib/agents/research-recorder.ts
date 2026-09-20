@@ -72,6 +72,8 @@ export type ResearchGap = {
   bars: number;
 };
 
+export type ResearchTrigger = "cron" | "tickDesk";
+
 export type ResearchDiagnostics = {
   count: number;
   lastBarT: number | null;
@@ -80,6 +82,8 @@ export type ResearchDiagnostics = {
   lastError: string | null;
   missingSymbols: string[];
   gaps: ResearchGap[];
+  lastTrigger: ResearchTrigger | null;
+  lastRunAt: number | null;
 };
 
 export type ResearchLabPayload = {
@@ -418,7 +422,9 @@ export async function recordClosedResearch(
   quotes: LiveQuote[],
   now = Date.now(),
   store: ResearchStore,
+  opts?: { trigger?: ResearchTrigger | null },
 ): Promise<ResearchDiagnostics> {
+  const trigger = opts?.trigger ?? null;
   const diag: ResearchDiagnostics = {
     count: 0,
     lastBarT: null,
@@ -427,6 +433,8 @@ export async function recordClosedResearch(
     lastError: null,
     missingSymbols: [],
     gaps: [],
+    lastTrigger: trigger,
+    lastRunAt: null,
   };
   try {
     const since = await store.lastBarBySymbol();
@@ -449,6 +457,7 @@ export async function recordClosedResearch(
     }
     diag.count = await store.count();
     if (diag.lastBarT == null) diag.lastBarT = await store.lastBarT();
+    diag.lastRunAt = Date.now();
     await store.writeStatus({
       lastBarT: diag.lastBarT,
       lastInserted: diag.lastInserted,
@@ -456,12 +465,15 @@ export async function recordClosedResearch(
       lastError: null,
       missingSymbols: diag.missingSymbols,
       gaps: diag.gaps,
+      lastTrigger: trigger,
+      lastRunAt: diag.lastRunAt,
     });
   } catch (err) {
     diag.lastError = err instanceof Error ? err.message : "storage failed";
     try {
       diag.count = await store.count();
       diag.lastBarT = await store.lastBarT();
+      diag.lastRunAt = Date.now();
       await store.writeStatus({
         lastBarT: diag.lastBarT,
         lastInserted: diag.lastInserted,
@@ -469,6 +481,8 @@ export async function recordClosedResearch(
         lastError: diag.lastError,
         missingSymbols: diag.missingSymbols,
         gaps: diag.gaps,
+        lastTrigger: trigger,
+        lastRunAt: diag.lastRunAt,
       });
     } catch {
       /* status write may fail with the same store */
